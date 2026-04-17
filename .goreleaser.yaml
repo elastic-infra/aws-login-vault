@@ -1,0 +1,44 @@
+version: 2
+
+project_name: aws-login-vault
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: aws-login-vault
+    main: ./cmd/aws-login-vault
+    binary: aws-login-vault
+    # 99designs/keyring links against the macOS Security framework via cgo,
+    # so we can only target darwin and must keep CGO_ENABLED=1.
+    env:
+      - CGO_ENABLED=1
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - formats: [tar.gz]
+
+checksum:
+  name_template: 'checksums.txt'
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+
+release:
+  draft: false
+  prerelease: auto

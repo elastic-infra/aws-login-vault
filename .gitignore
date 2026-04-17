@@ -30,6 +30,9 @@ go.work.sum
 # Built binary
 /aws-login-vault
 
+# GoReleaser output
+/dist/
+
 # Editor/IDE
 # .idea/
 # .vscode/
