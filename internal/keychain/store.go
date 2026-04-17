@@ -1,0 +1,109 @@
+package keychain
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/99designs/keyring"
+)
+
+const (
+	serviceName = "aws-login-vault"
+	keyPrefix   = "profile/"
+)
+
+// ErrNotFound is returned when a profile has no keychain entry.
+var ErrNotFound = errors.New("keychain entry not found")
+
+// Session is the complete persisted state for a profile.
+// It carries the short-lived AWS credentials, the refresh token, and the DPoP
+// private key used to bind the refresh token (must be reused on refresh).
+type Session struct {
+	SessionARN      string    `json:"sessionArn"`
+	AccessKeyID     string    `json:"accessKeyId"`
+	SecretAccessKey string    `json:"secretAccessKey"`
+	SessionToken    string    `json:"sessionToken"`
+	Expiration      time.Time `json:"expiration"`
+	RefreshToken    string    `json:"refreshToken"`
+	DPoPKeyPEM      string    `json:"dpopKeyPem"`
+	Region          string    `json:"region"`
+	ClientID        string    `json:"clientId"`
+}
+
+type Store struct {
+	kr keyring.Keyring
+}
+
+// Open returns a Store backed by the macOS login Keychain. On first write the
+// user will see a Keychain access prompt; KeychainTrustApplication=true makes
+// the "Always Allow" choice stick for subsequent runs of this binary.
+func Open() (*Store, error) {
+	kr, err := keyring.Open(keyring.Config{
+		ServiceName:              serviceName,
+		KeychainName:             "login",
+		KeychainTrustApplication: true,
+		KeychainSynchronizable:   false,
+		AllowedBackends:          []keyring.BackendType{keyring.KeychainBackend},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open keychain: %w", err)
+	}
+	return &Store{kr: kr}, nil
+}
+
+func (s *Store) Save(profile string, sess *Session) error {
+	data, err := json.Marshal(sess)
+	if err != nil {
+		return err
+	}
+	return s.kr.Set(keyring.Item{
+		Key:         keyName(profile),
+		Data:        data,
+		Label:       fmt.Sprintf("aws-login-vault: %s", profile),
+		Description: "AWS Login session credentials",
+	})
+}
+
+func (s *Store) Load(profile string) (*Session, error) {
+	item, err := s.kr.Get(keyName(profile))
+	if err != nil {
+		if errors.Is(err, keyring.ErrKeyNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	var sess Session
+	if err := json.Unmarshal(item.Data, &sess); err != nil {
+		return nil, fmt.Errorf("unmarshal session: %w", err)
+	}
+	return &sess, nil
+}
+
+func (s *Store) Delete(profile string) error {
+	err := s.kr.Remove(keyName(profile))
+	if errors.Is(err, keyring.ErrKeyNotFound) {
+		return ErrNotFound
+	}
+	return err
+}
+
+func (s *Store) List() ([]string, error) {
+	keys, err := s.kr.Keys()
+	if err != nil {
+		return nil, err
+	}
+	profiles := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if p, ok := strings.CutPrefix(k, keyPrefix); ok {
+			profiles = append(profiles, p)
+		}
+	}
+	return profiles, nil
+}
+
+func keyName(profile string) string {
+	return keyPrefix + profile
+}
