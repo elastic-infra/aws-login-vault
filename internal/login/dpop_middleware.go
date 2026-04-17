@@ -32,9 +32,8 @@ func (m *dpopMiddleware) HandleFinalize(
 	return next.HandleFinalize(ctx, in)
 }
 
-// WithDPoP registers a Finalize-step middleware that attaches a fresh DPoP
-// proof to every CreateOAuth2Token request. Finalize runs after the HTTP
-// request has been built, so Method and URL are stable when we sign.
+// WithDPoP attaches a fresh DPoP proof to each CreateOAuth2Token request.
+// Runs in Finalize so Method and URL are stable when signing.
 func WithDPoP(key *ecdsa.PrivateKey) func(*signin.Options) {
 	return func(o *signin.Options) {
 		o.APIOptions = append(o.APIOptions, func(stack *middleware.Stack) error {

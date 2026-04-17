@@ -72,9 +72,8 @@ func (cs *CallbackServer) handle(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, successHTML)
 }
 
-// Wait blocks until the browser hits the callback, the user cancels, or the
-// provided context is done. A 10-minute safety cap protects against a browser
-// that never returns.
+// Wait blocks for the browser callback. A 10-minute cap guards against a
+// browser that never returns.
 func (cs *CallbackServer) Wait(ctx context.Context) (code, state string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()

@@ -26,6 +26,7 @@ type LoginResult struct {
 	DPoPKeyPEM      string
 	SessionARN      string
 	Region          string
+	ClientID        string
 }
 
 // SameDeviceLogin drives the full SAME_DEVICE OAuth2 + PKCE + DPoP flow:
@@ -49,7 +50,7 @@ func SameDeviceLogin(ctx context.Context, cfg aws.Config) (*LoginResult, error) 
 	if err != nil {
 		return nil, fmt.Errorf("callback server: %w", err)
 	}
-	defer cb.Close()
+	defer func() { _ = cb.Close() }()
 
 	baseURL, err := SigninBaseURL(cfg.Region)
 	if err != nil {
@@ -108,6 +109,7 @@ func SameDeviceLogin(ctx context.Context, cfg aws.Config) (*LoginResult, error) 
 		DPoPKeyPEM:      pemStr,
 		SessionARN:      sessionARN,
 		Region:          cfg.Region,
+		ClientID:        SameDeviceClientID,
 	}, nil
 }
 

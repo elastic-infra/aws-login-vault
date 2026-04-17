@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/hkobayash/aws-login-vault/internal/awsconfig"
 	"github.com/hkobayash/aws-login-vault/internal/keychain"
@@ -53,7 +54,7 @@ func runLogin(ctx context.Context, profile, regionFlag string, force bool) error
 	if err != nil {
 		return fmt.Errorf("could not lock profile %q: %w", profile, err)
 	}
-	defer pl.Release()
+	defer func() { _ = pl.Release() }()
 
 	if existing, err := store.Load(profile); err == nil {
 		if !force {
@@ -79,17 +80,7 @@ func runLogin(ctx context.Context, profile, regionFlag string, force bool) error
 		return err
 	}
 
-	sess := &keychain.Session{
-		SessionARN:      result.SessionARN,
-		AccessKeyID:     result.AccessKeyID,
-		SecretAccessKey: result.SecretAccessKey,
-		SessionToken:    result.SessionToken,
-		Expiration:      result.Expiration,
-		RefreshToken:    result.RefreshToken,
-		DPoPKeyPEM:      result.DPoPKeyPEM,
-		Region:          result.Region,
-		ClientID:        loginflow.SameDeviceClientID,
-	}
+	sess := sessionFromLoginResult(result)
 	if err := store.Save(profile, sess); err != nil {
 		return fmt.Errorf("save session: %w", err)
 	}
@@ -105,7 +96,7 @@ func confirmOverwrite(profile string, existing *keychain.Session) (bool, error) 
 		"Profile %q already has a session for %s (expires %s).\nOverwrite? [y/N]: ",
 		profile, existing.SessionARN, existing.Expiration.Format(time.RFC3339))
 
-	if !isTerminal(os.Stdin) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return false, errors.New("non-interactive; pass --force to overwrite")
 	}
 	reader := bufio.NewReader(os.Stdin)
@@ -115,12 +106,4 @@ func confirmOverwrite(profile string, existing *keychain.Session) (bool, error) 
 	}
 	answer := strings.TrimSpace(strings.ToLower(line))
 	return answer == "y" || answer == "yes", nil
-}
-
-func isTerminal(f *os.File) bool {
-	fi, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
 }

@@ -80,7 +80,6 @@ func getOrRefresh(ctx context.Context, store *keychain.Store, profile string) (*
 		return nil, err
 	}
 
-	// Fast path: plenty of time left, skip locking entirely.
 	if time.Until(sess.Expiration) > refreshThreshold {
 		return sess, nil
 	}
@@ -89,9 +88,9 @@ func getOrRefresh(ctx context.Context, store *keychain.Store, profile string) (*
 	if err != nil {
 		return nil, fmt.Errorf("lock profile %q: %w", profile, err)
 	}
-	defer pl.Release()
+	defer func() { _ = pl.Release() }()
 
-	// Double-check: another process may have refreshed while we waited.
+	// Another process may have refreshed while we waited; re-read before acting.
 	sess, err = store.Load(profile)
 	if err != nil {
 		return nil, err
@@ -110,6 +109,7 @@ func getOrRefresh(ctx context.Context, store *keychain.Store, profile string) (*
 		DPoPKeyPEM:   sess.DPoPKeyPEM,
 		SessionARN:   sess.SessionARN,
 		Region:       sess.Region,
+		ClientID:     sess.ClientID,
 	}
 	refreshed, err := loginflow.Refresh(ctx, cfg, prev)
 	if err != nil {
@@ -119,17 +119,7 @@ func getOrRefresh(ctx context.Context, store *keychain.Store, profile string) (*
 		return nil, fmt.Errorf("refresh failed: %w", err)
 	}
 
-	newSess := &keychain.Session{
-		SessionARN:      refreshed.SessionARN,
-		AccessKeyID:     refreshed.AccessKeyID,
-		SecretAccessKey: refreshed.SecretAccessKey,
-		SessionToken:    refreshed.SessionToken,
-		Expiration:      refreshed.Expiration,
-		RefreshToken:    refreshed.RefreshToken,
-		DPoPKeyPEM:      refreshed.DPoPKeyPEM,
-		Region:          refreshed.Region,
-		ClientID:        sess.ClientID,
-	}
+	newSess := sessionFromLoginResult(refreshed)
 	if err := store.Save(profile, newSess); err != nil {
 		return nil, fmt.Errorf("save refreshed session: %w", err)
 	}

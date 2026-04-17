@@ -47,5 +47,6 @@ func Refresh(ctx context.Context, cfg aws.Config, prev *LoginResult) (*LoginResu
 		DPoPKeyPEM:      prev.DPoPKeyPEM,
 		SessionARN:      prev.SessionARN,
 		Region:          prev.Region,
+		ClientID:        prev.ClientID,
 	}, nil
 }

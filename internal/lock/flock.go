@@ -11,12 +11,7 @@ import (
 	"github.com/gofrs/flock"
 )
 
-// Profile acquires an exclusive OS-level advisory lock for a profile so that
-// concurrent aws-login-vault processes cannot race on refresh-token rotation
-// or duplicate-login the same profile.
-//
-// Release must be called after the critical section. The lock file itself is
-// harmless to leave behind.
+// Profile is a held exclusive advisory lock on a profile. Release after use.
 type Profile struct {
 	fl *flock.Flock
 }
@@ -34,7 +29,9 @@ func lockDir() (string, error) {
 	return dir, nil
 }
 
-// AcquireProfile blocks until the lock is obtained or timeout expires.
+// AcquireProfile blocks until the lock is obtained or the timeout expires.
+// Serialises refresh and login across concurrent aws-login-vault processes so
+// they cannot race on refresh-token rotation or duplicate-login the same profile.
 func AcquireProfile(profile string, timeout time.Duration) (*Profile, error) {
 	dir, err := lockDir()
 	if err != nil {
