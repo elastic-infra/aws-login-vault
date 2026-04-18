@@ -69,21 +69,3 @@ func TestExtractSubFromIDToken(t *testing.T) {
 		})
 	}
 }
-
-// TestExtractSubFromIDToken_PaddingFallback covers the URL-safe base64 with
-// padding fallback path: some JWT producers emit padding even though the spec
-// forbids it. The fallback lets us parse either encoding.
-func TestExtractSubFromIDToken_PaddingFallback(t *testing.T) {
-	payload := []byte(`{"sub":"arn:aws:iam::1:user/x"}`)
-	// base64.URLEncoding (with padding).
-	encoded := base64.URLEncoding.EncodeToString(payload)
-	token := "aaa." + encoded + ".ccc"
-
-	got, err := ExtractSubFromIDToken(token)
-	if err != nil {
-		t.Fatalf("ExtractSubFromIDToken: %v", err)
-	}
-	if got != "arn:aws:iam::1:user/x" {
-		t.Errorf("got %q, want arn:aws:iam::1:user/x", got)
-	}
-}

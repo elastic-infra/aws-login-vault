@@ -17,11 +17,7 @@ func ExtractSubFromIDToken(idToken string) (string, error) {
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		s := parts[1] + strings.Repeat("=", (4-len(parts[1])%4)%4)
-		payload, err = base64.URLEncoding.DecodeString(s)
-		if err != nil {
-			return "", err
-		}
+		return "", err
 	}
 	var p struct {
 		Sub string `json:"sub"`
