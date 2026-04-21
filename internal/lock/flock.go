@@ -17,12 +17,13 @@ type Profile struct {
 }
 
 func lockDir() (string, error) {
-	home, err := os.UserHomeDir()
+	// Cache dir fits ephemeral state: locks are reconstructible and harmless to lose.
+	// Maps to ~/Library/Caches on macOS, $XDG_CACHE_HOME on Linux, %LocalAppData% on Windows.
+	base, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
-	// macOS-native location; we explicitly don't support other OSes in MVP.
-	dir := filepath.Join(home, "Library", "Application Support", "aws-login-vault", "locks")
+	dir := filepath.Join(base, "aws-login-vault", "locks")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}

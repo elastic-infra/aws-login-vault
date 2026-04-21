@@ -1,16 +1,13 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 
 	"github.com/hkobayash/aws-login-vault/internal/awsconfig"
 	"github.com/hkobayash/aws-login-vault/internal/keychain"
@@ -35,7 +32,7 @@ func newLoginCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&profile, "profile", defaultProfile, "profile name (used as keychain entry key)")
 	cmd.Flags().StringVar(&region, "region", "", "AWS region (required unless resolvable from env or config)")
-	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing session without prompting")
+	cmd.Flags().BoolVar(&force, "force", false, "overwrite even if the new sub differs from the existing session")
 	return cmd
 }
 
@@ -56,17 +53,8 @@ func runLogin(ctx context.Context, profile, regionFlag string, force bool) error
 	}
 	defer func() { _ = pl.Release() }()
 
-	if existing, err := store.Load(profile); err == nil {
-		if !force {
-			ok, err := confirmOverwrite(profile, existing)
-			if err != nil {
-				return err
-			}
-			if !ok {
-				return errors.New("aborted")
-			}
-		}
-	} else if !errors.Is(err, keychain.ErrNotFound) {
+	existing, err := store.Load(profile)
+	if err != nil && !errors.Is(err, keychain.ErrNotFound) {
 		return err
 	}
 
@@ -80,30 +68,22 @@ func runLogin(ctx context.Context, profile, regionFlag string, force bool) error
 		return err
 	}
 
+	// Guard against accidental account takeover: a different sub on the same
+	// profile name likely means the user logged into the wrong AWS account.
+	if existing != nil && existing.SessionARN != result.SessionARN && !force {
+		return fmt.Errorf(
+			"profile %q was %s, but logged in as %s. use --force if this is intentional",
+			profile, existing.SessionARN, result.SessionARN,
+		)
+	}
+
 	sess := sessionFromLoginResult(result)
 	if err := store.Save(profile, sess); err != nil {
 		return fmt.Errorf("save session: %w", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "Logged in as %s\n", sess.SessionARN)
-	fmt.Fprintf(os.Stderr, "Saved profile %q to macOS Keychain (expires in %s)\n",
+	fmt.Fprintf(os.Stderr, "Saved profile %q to Keychain (expires in %s)\n",
 		profile, time.Until(sess.Expiration).Round(time.Second))
 	return nil
-}
-
-func confirmOverwrite(profile string, existing *keychain.Session) (bool, error) {
-	fmt.Fprintf(os.Stderr,
-		"Profile %q already has a session for %s (expires %s).\nOverwrite? [y/N]: ",
-		profile, existing.SessionARN, existing.Expiration.Format(time.RFC3339))
-
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return false, errors.New("non-interactive; pass --force to overwrite")
-	}
-	reader := bufio.NewReader(os.Stdin)
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		return false, err
-	}
-	answer := strings.TrimSpace(strings.ToLower(line))
-	return answer == "y" || answer == "yes", nil
 }

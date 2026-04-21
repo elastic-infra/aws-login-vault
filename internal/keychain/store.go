@@ -1,6 +1,8 @@
 package keychain
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,8 +13,9 @@ import (
 )
 
 const (
-	serviceName = "aws-login-vault"
-	keyPrefix   = "profile/"
+	serviceName   = "aws-login-vault"
+	keyPrefix     = "profile/"
+	assumedPrefix = "assumed/"
 )
 
 // ErrNotFound is returned when a profile has no keychain entry.
@@ -33,17 +36,28 @@ type Session struct {
 	ClientID        string    `json:"clientId"`
 }
 
+// AssumedSession is a cached AssumeRole result. It has no refresh capability
+// on its own: when expired, the caller must re-AssumeRole from the base login
+// session. Hence no RefreshToken or DPoP key here.
+type AssumedSession struct {
+	AccessKeyID     string    `json:"accessKeyId"`
+	SecretAccessKey string    `json:"secretAccessKey"`
+	SessionToken    string    `json:"sessionToken"`
+	Expiration      time.Time `json:"expiration"`
+	RoleARN         string    `json:"roleArn"`
+	RoleSessionName string    `json:"roleSessionName"`
+	SourceIdentity  string    `json:"sourceIdentity,omitempty"`
+	Region          string    `json:"region"`
+}
+
 type Store struct {
 	kr keyring.Keyring
 }
 
-// Open returns a Store backed by the macOS login Keychain. On first write the
-// user will see a Keychain access prompt; KeychainTrustApplication=true makes
-// the "Always Allow" choice stick for subsequent runs of this binary.
 func Open() (*Store, error) {
 	kr, err := keyring.Open(keyring.Config{
 		ServiceName:              serviceName,
-		KeychainName:             "login",
+		KeychainName:             serviceName, // ~/Library/Keychains/aws-login-vault.keychain-db
 		KeychainTrustApplication: true,
 		KeychainSynchronizable:   false,
 		AllowedBackends:          []keyring.BackendType{keyring.KeychainBackend},
@@ -102,6 +116,74 @@ func (s *Store) List() ([]string, error) {
 		}
 	}
 	return profiles, nil
+}
+
+// AssumedKey builds the keychain entry key for a cached AssumeRole result.
+// Format: assumed/<profile>/<sha256(role-arn)>[/<source-identity>]
+func AssumedKey(profile, roleARN, sourceIdentity string) string {
+	h := sha256.Sum256([]byte(roleARN))
+	key := assumedPrefix + profile + "/" + hex.EncodeToString(h[:])
+	if sourceIdentity != "" {
+		key += "/" + sourceIdentity
+	}
+	return key
+}
+
+func (s *Store) SaveAssumed(key string, sess *AssumedSession) error {
+	data, err := json.Marshal(sess)
+	if err != nil {
+		return err
+	}
+	return s.kr.Set(keyring.Item{
+		Key:         key,
+		Data:        data,
+		Label:       fmt.Sprintf("aws-login-vault: %s", key),
+		Description: "AWS Login AssumeRole cached credentials",
+	})
+}
+
+func (s *Store) LoadAssumed(key string) (*AssumedSession, error) {
+	item, err := s.kr.Get(key)
+	if err != nil {
+		if errors.Is(err, keyring.ErrKeyNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	var sess AssumedSession
+	if err := json.Unmarshal(item.Data, &sess); err != nil {
+		return nil, fmt.Errorf("unmarshal assumed session: %w", err)
+	}
+	return &sess, nil
+}
+
+func (s *Store) DeleteAssumed(key string) error {
+	err := s.kr.Remove(key)
+	if errors.Is(err, keyring.ErrKeyNotFound) {
+		return ErrNotFound
+	}
+	return err
+}
+
+// DeleteAssumedForProfile removes every assumed-role cache entry for a profile.
+// Used by logout so that stale role credentials don't survive a session rotation.
+func (s *Store) DeleteAssumedForProfile(profile string) (int, error) {
+	keys, err := s.kr.Keys()
+	if err != nil {
+		return 0, err
+	}
+	prefix := assumedPrefix + profile + "/"
+	removed := 0
+	for _, k := range keys {
+		if !strings.HasPrefix(k, prefix) {
+			continue
+		}
+		if err := s.kr.Remove(k); err != nil && !errors.Is(err, keyring.ErrKeyNotFound) {
+			return removed, err
+		}
+		removed++
+	}
+	return removed, nil
 }
 
 func keyName(profile string) string {
