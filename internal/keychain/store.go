@@ -36,6 +36,11 @@ type Session struct {
 	ClientID        string    `json:"clientId"`
 }
 
+// Creds exposes the subset used for credential_process output.
+func (s *Session) Creds() (akid, secret, token string, expiration time.Time, region string) {
+	return s.AccessKeyID, s.SecretAccessKey, s.SessionToken, s.Expiration, s.Region
+}
+
 // AssumedSession is a cached AssumeRole result. It has no refresh capability
 // on its own: when expired, the caller must re-AssumeRole from the base login
 // session. Hence no RefreshToken or DPoP key here.
@@ -48,6 +53,10 @@ type AssumedSession struct {
 	RoleSessionName string    `json:"roleSessionName"`
 	SourceIdentity  string    `json:"sourceIdentity,omitempty"`
 	Region          string    `json:"region"`
+}
+
+func (s *AssumedSession) Creds() (akid, secret, token string, expiration time.Time, region string) {
+	return s.AccessKeyID, s.SecretAccessKey, s.SessionToken, s.Expiration, s.Region
 }
 
 type Store struct {
@@ -155,14 +164,6 @@ func (s *Store) LoadAssumed(key string) (*AssumedSession, error) {
 		return nil, fmt.Errorf("unmarshal assumed session: %w", err)
 	}
 	return &sess, nil
-}
-
-func (s *Store) DeleteAssumed(key string) error {
-	err := s.kr.Remove(key)
-	if errors.Is(err, keyring.ErrKeyNotFound) {
-		return ErrNotFound
-	}
-	return err
 }
 
 // DeleteAssumedForProfile removes every assumed-role cache entry for a profile.

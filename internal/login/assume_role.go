@@ -18,16 +18,21 @@ const (
 	AssumedExpiryWindow       = 5 * time.Minute
 )
 
+// BaseSession bundles the login_session values AssumeRole needs: the
+// credentials to sign the STS call, and the sub ARN used to derive a default
+// RoleSessionName / SourceIdentity.
+type BaseSession struct {
+	Credentials aws.Credentials
+	SessionARN  string
+}
+
 type AssumeRoleInput struct {
-	// Config provides Region and any HTTP/logger defaults.
-	// Credentials in this config are ignored; BaseCredentials is used instead.
-	Config          aws.Config
-	BaseCredentials aws.Credentials
+	Config          aws.Config // Region / HTTP defaults; Credentials are ignored (Base is used).
+	Base            BaseSession
 	RoleARN         string
-	RoleSessionName string        // empty → derived from SubARN
+	RoleSessionName string        // empty → derived from Base.SessionARN
 	SourceIdentity  string        // empty → SetSourceIdentity not sent
 	Duration        time.Duration // zero → DefaultAssumeRoleDuration
-	SubARN          string        // used only when RoleSessionName is empty
 }
 
 type AssumeRoleOutput struct {
@@ -46,10 +51,10 @@ func AssumeRole(ctx context.Context, in AssumeRoleInput) (*AssumeRoleOutput, err
 
 	sessionName := in.RoleSessionName
 	if sessionName == "" {
-		sessionName = DeriveRoleSessionName(in.SubARN)
+		sessionName = DeriveRoleSessionName(in.Base.SessionARN)
 	}
 	if sessionName == "" {
-		return nil, fmt.Errorf("could not derive a role session name from %q; specify --role-session-name", in.SubARN)
+		return nil, fmt.Errorf("could not derive a role session name from %q; specify --role-session-name", in.Base.SessionARN)
 	}
 
 	duration := in.Duration
@@ -59,9 +64,9 @@ func AssumeRole(ctx context.Context, in AssumeRoleInput) (*AssumeRoleOutput, err
 
 	cfg := in.Config.Copy()
 	cfg.Credentials = credentials.NewStaticCredentialsProvider(
-		in.BaseCredentials.AccessKeyID,
-		in.BaseCredentials.SecretAccessKey,
-		in.BaseCredentials.SessionToken,
+		in.Base.Credentials.AccessKeyID,
+		in.Base.Credentials.SecretAccessKey,
+		in.Base.Credentials.SessionToken,
 	)
 
 	client := sts.NewFromConfig(cfg)

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	smithy "github.com/aws/smithy-go"
 	"github.com/spf13/cobra"
 
 	"github.com/hkobayash/aws-login-vault/internal/awsconfig"
@@ -39,6 +40,12 @@ type credentialProcessOutput struct {
 	SecretAccessKey string `json:"SecretAccessKey"`
 	SessionToken    string `json:"SessionToken,omitempty"`
 	Expiration      string `json:"Expiration,omitempty"`
+}
+
+// exportable is implemented by *keychain.Session and *keychain.AssumedSession;
+// it lets writeJSON/writeEnv handle either without a middle-man struct.
+type exportable interface {
+	Creds() (akid, secret, token string, expiration time.Time, region string)
 }
 
 type exportOptions struct {
@@ -87,14 +94,14 @@ func runExport(ctx context.Context, opts exportOptions) error {
 	}
 
 	if opts.roleARN == "" {
-		return writeCredentials(credsFromBase(baseSession), opts.format)
+		return writeCredentials(baseSession, opts.format)
 	}
 
 	assumed, err := prepareAssumedSession(ctx, store, baseSession, opts)
 	if err != nil {
 		return err
 	}
-	return writeCredentials(credsFromAssumed(assumed), opts.format)
+	return writeCredentials(assumed, opts.format)
 }
 
 // prepareBaseSession returns a valid (non-expiring-soon) login_session,
@@ -242,16 +249,18 @@ func prepareAssumedSession(ctx context.Context, store *keychain.Store, base *key
 
 	out, err := loginflow.AssumeRole(ctx, loginflow.AssumeRoleInput{
 		Config: cfg,
-		BaseCredentials: aws.Credentials{
-			AccessKeyID:     base.AccessKeyID,
-			SecretAccessKey: base.SecretAccessKey,
-			SessionToken:    base.SessionToken,
+		Base: loginflow.BaseSession{
+			Credentials: aws.Credentials{
+				AccessKeyID:     base.AccessKeyID,
+				SecretAccessKey: base.SecretAccessKey,
+				SessionToken:    base.SessionToken,
+			},
+			SessionARN: base.SessionARN,
 		},
 		RoleARN:         opts.roleARN,
 		RoleSessionName: opts.roleSessionName,
 		SourceIdentity:  sourceIdentity,
 		Duration:        opts.roleDuration,
-		SubARN:          base.SessionARN,
 	})
 	if err != nil {
 		return nil, assumeRoleErrorWithHint(err, sourceIdentity)
@@ -280,7 +289,7 @@ func resolveSourceIdentity(raw, subARN string) (string, error) {
 	if raw != sourceIdentityAuto {
 		return raw, nil
 	}
-	derived := loginflow.DeriveRoleSessionName(subARN) // same sanitize rules
+	derived := loginflow.DeriveRoleSessionName(subARN)
 	if derived == "" {
 		return "", fmt.Errorf(`could not derive source-identity from %q; pass --source-identity <value> explicitly`, subARN)
 	}
@@ -288,47 +297,21 @@ func resolveSourceIdentity(raw, subARN string) (string, error) {
 }
 
 // assumeRoleErrorWithHint surfaces the SourceIdentity trust-policy gotcha when
-// relevant.
+// the server returned AccessDenied citing SetSourceIdentity.
 func assumeRoleErrorWithHint(err error, sourceIdentity string) error {
 	if sourceIdentity == "" {
 		return err
 	}
-	msg := err.Error()
-	if strings.Contains(msg, "AccessDenied") || strings.Contains(msg, "sts:SetSourceIdentity") {
-		return fmt.Errorf("%w; if the role's trust policy does not grant sts:SetSourceIdentity, drop --source-identity", err)
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) && apiErr.ErrorCode() == "AccessDenied" {
+		if strings.Contains(apiErr.ErrorMessage(), "SetSourceIdentity") {
+			return fmt.Errorf("%w; the role's trust policy must allow sts:SetSourceIdentity, or drop --source-identity", err)
+		}
 	}
 	return err
 }
 
-type exportCreds struct {
-	AccessKeyID     string
-	SecretAccessKey string
-	SessionToken    string
-	Expiration      time.Time
-	Region          string
-}
-
-func credsFromBase(s *keychain.Session) exportCreds {
-	return exportCreds{
-		AccessKeyID:     s.AccessKeyID,
-		SecretAccessKey: s.SecretAccessKey,
-		SessionToken:    s.SessionToken,
-		Expiration:      s.Expiration,
-		Region:          s.Region,
-	}
-}
-
-func credsFromAssumed(s *keychain.AssumedSession) exportCreds {
-	return exportCreds{
-		AccessKeyID:     s.AccessKeyID,
-		SecretAccessKey: s.SecretAccessKey,
-		SessionToken:    s.SessionToken,
-		Expiration:      s.Expiration,
-		Region:          s.Region,
-	}
-}
-
-func writeCredentials(c exportCreds, format string) error {
+func writeCredentials(c exportable, format string) error {
 	switch format {
 	case formatJSON:
 		return writeJSON(c)
@@ -338,29 +321,31 @@ func writeCredentials(c exportCreds, format string) error {
 	return fmt.Errorf("unknown format %q", format)
 }
 
-func writeJSON(c exportCreds) error {
+func writeJSON(c exportable) error {
+	akid, secret, token, expiration, _ := c.Creds()
 	out := credentialProcessOutput{
 		Version:         1,
-		AccessKeyId:     c.AccessKeyID,
-		SecretAccessKey: c.SecretAccessKey,
-		SessionToken:    c.SessionToken,
-		Expiration:      c.Expiration.UTC().Format(time.RFC3339),
+		AccessKeyId:     akid,
+		SecretAccessKey: secret,
+		SessionToken:    token,
+		Expiration:      expiration.UTC().Format(time.RFC3339),
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(out)
 }
 
-func writeEnv(c exportCreds) error {
-	fmt.Printf("export AWS_ACCESS_KEY_ID=%s\n", shellQuote(c.AccessKeyID))
-	fmt.Printf("export AWS_SECRET_ACCESS_KEY=%s\n", shellQuote(c.SecretAccessKey))
-	if c.SessionToken != "" {
-		fmt.Printf("export AWS_SESSION_TOKEN=%s\n", shellQuote(c.SessionToken))
+func writeEnv(c exportable) error {
+	akid, secret, token, expiration, region := c.Creds()
+	fmt.Printf("export AWS_ACCESS_KEY_ID=%s\n", shellQuote(akid))
+	fmt.Printf("export AWS_SECRET_ACCESS_KEY=%s\n", shellQuote(secret))
+	if token != "" {
+		fmt.Printf("export AWS_SESSION_TOKEN=%s\n", shellQuote(token))
 	}
-	fmt.Printf("export AWS_CREDENTIAL_EXPIRATION=%s\n", shellQuote(c.Expiration.UTC().Format(time.RFC3339)))
-	if c.Region != "" {
-		fmt.Printf("export AWS_REGION=%s\n", shellQuote(c.Region))
-		fmt.Printf("export AWS_DEFAULT_REGION=%s\n", shellQuote(c.Region))
+	fmt.Printf("export AWS_CREDENTIAL_EXPIRATION=%s\n", shellQuote(expiration.UTC().Format(time.RFC3339)))
+	if region != "" {
+		fmt.Printf("export AWS_REGION=%s\n", shellQuote(region))
+		fmt.Printf("export AWS_DEFAULT_REGION=%s\n", shellQuote(region))
 	}
 	return nil
 }
