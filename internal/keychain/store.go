@@ -64,12 +64,23 @@ type Store struct {
 }
 
 func Open() (*Store, error) {
+	// All name fields are set to serviceName so entries land in a single
+	// namespace ("aws-login-vault") regardless of which backend is selected.
+	// AllowedBackends is ordered by preference: GUI session store first, then
+	// the on-disk gpg-encrypted store, then the session-only kernel keyring.
 	kr, err := keyring.Open(keyring.Config{
 		ServiceName:              serviceName,
-		KeychainName:             serviceName, // ~/Library/Keychains/aws-login-vault.keychain-db
+		KeychainName:             serviceName, // macOS only: ~/Library/Keychains/aws-login-vault.keychain-db
 		KeychainTrustApplication: true,
 		KeychainSynchronizable:   false,
-		AllowedBackends:          []keyring.BackendType{keyring.KeychainBackend},
+		LibSecretCollectionName:  serviceName,
+		PassPrefix:               serviceName,
+		AllowedBackends: []keyring.BackendType{
+			keyring.KeychainBackend,      // macOS
+			keyring.SecretServiceBackend, // Linux GUI session (gnome-keyring / kwallet)
+			keyring.PassBackend,          // Linux pass + gpg-agent
+			keyring.KeyCtlBackend,        // Linux session-only fallback
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("open keychain: %w", err)

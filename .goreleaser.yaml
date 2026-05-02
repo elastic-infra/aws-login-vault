@@ -7,15 +7,31 @@ before:
     - go mod tidy
 
 builds:
-  - id: aws-login-vault
+  - id: aws-login-vault-darwin
     main: ./cmd/aws-login-vault
     binary: aws-login-vault
-    # 99designs/keyring links against the macOS Security framework via cgo,
-    # so we can only target darwin and must keep CGO_ENABLED=1.
+    # 99designs/keyring's macOS backend links against the Security framework
+    # via cgo, so darwin builds need CGO_ENABLED=1.
     env:
       - CGO_ENABLED=1
     goos:
       - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+  - id: aws-login-vault-linux
+    main: ./cmd/aws-login-vault
+    binary: aws-login-vault
+    # SecretService / Pass / KeyCtl backends are pure Go; cgo not required.
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
     goarch:
       - amd64
       - arm64
