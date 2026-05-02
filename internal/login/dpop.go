@@ -1,6 +1,7 @@
 package login
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -12,6 +13,9 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/service/signin"
+	"github.com/aws/smithy-go/middleware"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"github.com/google/uuid"
 )
 
@@ -101,4 +105,36 @@ func ecCoordinate(b *big.Int) string {
 	src := b.Bytes()
 	copy(buf[32-len(src):], src)
 	return base64.RawURLEncoding.EncodeToString(buf)
+}
+
+type dpopMiddleware struct {
+	key *ecdsa.PrivateKey
+}
+
+func (m *dpopMiddleware) ID() string { return "DPoPInjector" }
+
+func (m *dpopMiddleware) HandleFinalize(
+	ctx context.Context, in middleware.FinalizeInput, next middleware.FinalizeHandler,
+) (middleware.FinalizeOutput, middleware.Metadata, error) {
+	req, ok := in.Request.(*smithyhttp.Request)
+	if !ok {
+		return middleware.FinalizeOutput{}, middleware.Metadata{},
+			fmt.Errorf("dpop: unexpected transport type %T", in.Request)
+	}
+	proof, err := MakeDPoPProof(m.key, req.Method, req.URL.String())
+	if err != nil {
+		return middleware.FinalizeOutput{}, middleware.Metadata{}, fmt.Errorf("dpop: %w", err)
+	}
+	req.Header.Set("DPoP", proof)
+	return next.HandleFinalize(ctx, in)
+}
+
+// WithDPoP attaches a fresh DPoP proof to each CreateOAuth2Token request.
+// Runs in Finalize so Method and URL are stable when signing.
+func WithDPoP(key *ecdsa.PrivateKey) func(*signin.Options) {
+	return func(o *signin.Options) {
+		o.APIOptions = append(o.APIOptions, func(stack *middleware.Stack) error {
+			return stack.Finalize.Add(&dpopMiddleware{key: key}, middleware.After)
+		})
+	}
 }

@@ -128,15 +128,23 @@ func exchangeAuthCode(
 		return nil, fmt.Errorf("serialize dpop key: %w", err)
 	}
 
-	return &LoginResult{
-		AccessKeyID:     aws.ToString(out.TokenOutput.AccessToken.AccessKeyId),
-		SecretAccessKey: aws.ToString(out.TokenOutput.AccessToken.SecretAccessKey),
-		SessionToken:    aws.ToString(out.TokenOutput.AccessToken.SessionToken),
-		Expiration:      time.Now().Add(time.Duration(aws.ToInt32(out.TokenOutput.ExpiresIn)) * time.Second),
-		RefreshToken:    aws.ToString(out.TokenOutput.RefreshToken),
-		DPoPKeyPEM:      pemStr,
-		SessionARN:      sessionARN,
-		Region:          cfg.Region,
-		ClientID:        clientID,
-	}, nil
+	r := &LoginResult{
+		DPoPKeyPEM: pemStr,
+		SessionARN: sessionARN,
+		Region:     cfg.Region,
+		ClientID:   clientID,
+	}
+	applyTokenResponse(r, out.TokenOutput)
+	return r, nil
+}
+
+// applyTokenResponse copies short-lived credential fields from a /v1/token
+// response into r. The caller fills in flow-specific fields (DPoPKeyPEM,
+// SessionARN, Region, ClientID) before calling this.
+func applyTokenResponse(r *LoginResult, out *types.CreateOAuth2TokenResponseBody) {
+	r.AccessKeyID = aws.ToString(out.AccessToken.AccessKeyId)
+	r.SecretAccessKey = aws.ToString(out.AccessToken.SecretAccessKey)
+	r.SessionToken = aws.ToString(out.AccessToken.SessionToken)
+	r.Expiration = time.Now().Add(time.Duration(aws.ToInt32(out.ExpiresIn)) * time.Second)
+	r.RefreshToken = aws.ToString(out.RefreshToken)
 }

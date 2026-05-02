@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/signin"
@@ -38,15 +37,12 @@ func Refresh(ctx context.Context, cfg aws.Config, prev *LoginResult) (*LoginResu
 		return nil, errors.New("refresh response missing AccessToken")
 	}
 
-	return &LoginResult{
-		AccessKeyID:     aws.ToString(out.TokenOutput.AccessToken.AccessKeyId),
-		SecretAccessKey: aws.ToString(out.TokenOutput.AccessToken.SecretAccessKey),
-		SessionToken:    aws.ToString(out.TokenOutput.AccessToken.SessionToken),
-		Expiration:      time.Now().Add(time.Duration(aws.ToInt32(out.TokenOutput.ExpiresIn)) * time.Second),
-		RefreshToken:    aws.ToString(out.TokenOutput.RefreshToken),
-		DPoPKeyPEM:      prev.DPoPKeyPEM,
-		SessionARN:      prev.SessionARN,
-		Region:          prev.Region,
-		ClientID:        prev.ClientID,
-	}, nil
+	r := &LoginResult{
+		DPoPKeyPEM: prev.DPoPKeyPEM,
+		SessionARN: prev.SessionARN,
+		Region:     prev.Region,
+		ClientID:   prev.ClientID,
+	}
+	applyTokenResponse(r, out.TokenOutput)
+	return r, nil
 }
