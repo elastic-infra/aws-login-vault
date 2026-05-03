@@ -33,7 +33,7 @@ func lockDir() (string, error) {
 // AcquireProfile blocks until the lock is obtained or the timeout expires.
 // Serialises refresh and login across concurrent aws-login-vault processes so
 // they cannot race on refresh-token rotation or duplicate-login the same profile.
-func AcquireProfile(profile string, timeout time.Duration) (*Profile, error) {
+func AcquireProfile(ctx context.Context, profile string, timeout time.Duration) (*Profile, error) {
 	dir, err := lockDir()
 	if err != nil {
 		return nil, err
@@ -41,7 +41,7 @@ func AcquireProfile(profile string, timeout time.Duration) (*Profile, error) {
 	path := filepath.Join(dir, profile+".lock")
 	fl := flock.New(path)
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	locked, err := fl.TryLockContext(ctx, 100*time.Millisecond)

@@ -52,7 +52,7 @@ func SameDeviceLogin(ctx context.Context, cfg aws.Config) (*LoginResult, error) 
 	if err != nil {
 		return nil, fmt.Errorf("callback server: %w", err)
 	}
-	defer func() { _ = cb.Close() }()
+	defer func() { _ = cb.Close(ctx) }()
 
 	baseURL, err := SigninBaseURL(cfg.Region)
 	if err != nil {

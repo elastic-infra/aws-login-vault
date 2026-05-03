@@ -52,7 +52,7 @@ func runLogin(ctx context.Context, profile, regionFlag string, force, remote boo
 		return err
 	}
 
-	pl, err := lock.AcquireProfile(profile, loginLockTimeout)
+	pl, err := lock.AcquireProfile(ctx, profile, loginLockTimeout)
 	if err != nil {
 		return fmt.Errorf("could not lock profile %q: %w", profile, err)
 	}

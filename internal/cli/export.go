@@ -120,7 +120,7 @@ func prepareBaseSession(ctx context.Context, store *keychain.Store, profile stri
 		return sess, nil
 	}
 
-	pl, err := lock.AcquireProfile(profile, refreshLockTimeout)
+	pl, err := lock.AcquireProfile(ctx, profile, refreshLockTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("lock profile %q: %w", profile, err)
 	}
@@ -173,7 +173,7 @@ func bootstrapBaseSession(ctx context.Context, store *keychain.Store, profile st
 		return nil, fmt.Errorf("profile %q is not logged in; run: aws-login-vault login --profile %s (or pass --auto-login)", profile, profile)
 	}
 
-	pl, err := lock.AcquireProfile(profile, refreshLockTimeout)
+	pl, err := lock.AcquireProfile(ctx, profile, refreshLockTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("lock profile %q: %w", profile, err)
 	}
@@ -229,7 +229,7 @@ func prepareAssumedSession(ctx context.Context, store *keychain.Store, base *key
 		return nil, err
 	}
 
-	pl, err := lock.AcquireProfile(opts.profile, refreshLockTimeout)
+	pl, err := lock.AcquireProfile(ctx, opts.profile, refreshLockTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("lock profile %q: %w", opts.profile, err)
 	}

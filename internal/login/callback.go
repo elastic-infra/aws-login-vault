@@ -85,8 +85,8 @@ func (cs *CallbackServer) Wait(ctx context.Context) (code, state string, err err
 	}
 }
 
-func (cs *CallbackServer) Close() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+func (cs *CallbackServer) Close(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	return cs.server.Shutdown(ctx)
 }
