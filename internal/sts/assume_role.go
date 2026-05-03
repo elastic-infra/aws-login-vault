@@ -1,4 +1,4 @@
-package login
+package sts
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
+	awssts "github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 const (
@@ -69,9 +69,9 @@ func AssumeRole(ctx context.Context, in AssumeRoleInput) (*AssumeRoleOutput, err
 		in.Base.Credentials.SessionToken,
 	)
 
-	client := sts.NewFromConfig(cfg)
+	client := awssts.NewFromConfig(cfg)
 
-	input := &sts.AssumeRoleInput{
+	input := &awssts.AssumeRoleInput{
 		RoleArn:         aws.String(in.RoleARN),
 		RoleSessionName: aws.String(sessionName),
 		DurationSeconds: aws.Int32(int32(duration.Seconds())),

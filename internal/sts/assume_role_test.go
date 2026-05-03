@@ -1,4 +1,4 @@
-package login
+package sts
 
 import (
 	"strings"

@@ -17,6 +17,7 @@ import (
 	"github.com/hkobayash/aws-login-vault/internal/keychain"
 	"github.com/hkobayash/aws-login-vault/internal/lock"
 	loginflow "github.com/hkobayash/aws-login-vault/internal/login"
+	"github.com/hkobayash/aws-login-vault/internal/sts"
 )
 
 const (
@@ -221,7 +222,7 @@ func prepareAssumedSession(ctx context.Context, store *keychain.Store, base *key
 	cacheKey := keychain.AssumedKey(opts.profile, opts.roleARN, sourceIdentity)
 
 	if cached, err := store.LoadAssumed(cacheKey); err == nil {
-		if time.Until(cached.Expiration) > loginflow.AssumedExpiryWindow {
+		if time.Until(cached.Expiration) > sts.AssumedExpiryWindow {
 			return cached, nil
 		}
 	} else if !errors.Is(err, keychain.ErrNotFound) {
@@ -235,7 +236,7 @@ func prepareAssumedSession(ctx context.Context, store *keychain.Store, base *key
 	defer func() { _ = pl.Release() }()
 
 	if cached, err := store.LoadAssumed(cacheKey); err == nil {
-		if time.Until(cached.Expiration) > loginflow.AssumedExpiryWindow {
+		if time.Until(cached.Expiration) > sts.AssumedExpiryWindow {
 			return cached, nil
 		}
 	} else if !errors.Is(err, keychain.ErrNotFound) {
@@ -247,9 +248,9 @@ func prepareAssumedSession(ctx context.Context, store *keychain.Store, base *key
 		return nil, fmt.Errorf("build aws config: %w", err)
 	}
 
-	out, err := loginflow.AssumeRole(ctx, loginflow.AssumeRoleInput{
+	out, err := sts.AssumeRole(ctx, sts.AssumeRoleInput{
 		Config: cfg,
-		Base: loginflow.BaseSession{
+		Base: sts.BaseSession{
 			Credentials: aws.Credentials{
 				AccessKeyID:     base.AccessKeyID,
 				SecretAccessKey: base.SecretAccessKey,
@@ -289,7 +290,7 @@ func resolveSourceIdentity(raw, subARN string) (string, error) {
 	if raw != sourceIdentityAuto {
 		return raw, nil
 	}
-	derived := loginflow.DeriveRoleSessionName(subARN)
+	derived := sts.DeriveRoleSessionName(subARN)
 	if derived == "" {
 		return "", fmt.Errorf(`could not derive source-identity from %q; pass --source-identity <value> explicitly`, subARN)
 	}
