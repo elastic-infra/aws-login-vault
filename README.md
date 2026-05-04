@@ -1,6 +1,6 @@
 # aws-login-vault
 
-A Go reimplementation of AWS CLI v2's `aws login` (Management Console authentication). It persists the temporary credentials in the **OS secure store** (macOS Keychain / Linux SecretService / Pass / KeyCtl) so that the AWS CLI / SDKs can consume them transparently via `credential_process`.
+A Go reimplementation of AWS CLI v2's `aws login` (Management Console authentication). It persists the temporary credentials in the **OS secure store** (macOS Keychain / Linux SecretService / Pass / KeyCtl) so that the AWS CLI / SDKs can consume them transparently via `credential_process`. The basic flow is PKCE + DPoP + a local callback server; for use over SSH it also supports the CROSS_DEVICE flow (`--remote`).
 
 ## Features
 
@@ -52,6 +52,23 @@ A browser opens and shows the AWS Sign-In page. After authentication, the tempor
 - **macOS**: the first run prompts for the keychain password and an Always Allow dialog
 - **Linux SecretService**: stored in the existing login keyring (GNOME / KDE)
 - **Linux Pass**: creates `~/.password-store/aws-login-vault/profile/<name>.gpg`
+
+### Logging in from a remote machine (over SSH)
+
+In environments where the local browser cannot reach the callback server, use `--remote` (the CROSS_DEVICE flow):
+
+```bash
+# Inside the SSH session on the remote host
+aws-login-vault login --remote --profile dev --region us-east-1
+```
+
+1. The CLI prints the authorize URL on stderr
+2. Open that URL in a browser on your **local machine** and authenticate
+3. Copy the verification code (a base64 string) shown in the browser after auth
+4. Paste it into the terminal on the remote host and press Enter
+5. Login succeeds and is persisted to the store
+
+`--remote` requires interactive paste, so it cannot be used through `credential_process` (e.g. `export --auto-login`); only SAME_DEVICE works there. Automatic refresh on the remote host still works through the `export` path once the initial login is in place.
 
 ### `~/.aws/config`
 
@@ -188,7 +205,6 @@ The `AllowedBackends` priority is: **SecretService → Pass → KeyCtl**. The fi
 - **No Windows support**: a future WinCred backend is under consideration
 - **Lifetime of temporary credentials**: the AWS Sign-In API's `ExpiresIn` is at most 900 seconds (15 minutes). The refresh path extends the effective lifetime
 - **DPoP private key**: the same key is reused throughout the entire refresh lifetime (`cnf.jkt` binding). Discard it with `logout` if it is exposed
-- **CROSS_DEVICE flow not implemented**: login over SSH is unsupported. A workaround is to log in locally and rsync `~/.password-store` over (Pass backend only)
 
 ## License
 

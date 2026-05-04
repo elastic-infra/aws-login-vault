@@ -1,10 +1,12 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -22,21 +24,24 @@ func newLoginCmd() *cobra.Command {
 		profile string
 		region  string
 		force   bool
+		remote  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "login",
-		Short: "Sign in via the browser and cache credentials in macOS Keychain",
+		Short: "Sign in via the browser and cache credentials in the secure store",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLogin(cmd.Context(), profile, region, force)
+			return runLogin(cmd.Context(), profile, region, force, remote)
 		},
 	}
 	cmd.Flags().StringVar(&profile, "profile", defaultProfile, "profile name (used as keychain entry key)")
 	cmd.Flags().StringVar(&region, "region", "", "AWS region (required unless resolvable from env or config)")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite even if the new sub differs from the existing session")
+	cmd.Flags().BoolVar(&remote, "remote", false,
+		"use cross-device flow (display URL and paste verification code instead of opening a local callback)")
 	return cmd
 }
 
-func runLogin(ctx context.Context, profile, regionFlag string, force bool) error {
+func runLogin(ctx context.Context, profile, regionFlag string, force, remote bool) error {
 	region, err := awsconfig.ResolveRegion(ctx, profile, regionFlag)
 	if err != nil {
 		return err
@@ -63,7 +68,12 @@ func runLogin(ctx context.Context, profile, regionFlag string, force bool) error
 		return fmt.Errorf("build aws config: %w", err)
 	}
 
-	result, err := loginflow.SameDeviceLogin(ctx, cfg)
+	var result *loginflow.LoginResult
+	if remote {
+		result, err = loginflow.CrossDeviceLogin(ctx, cfg, stdinReadVerificationCode)
+	} else {
+		result, err = loginflow.SameDeviceLogin(ctx, cfg)
+	}
 	if err != nil {
 		return err
 	}
@@ -83,7 +93,20 @@ func runLogin(ctx context.Context, profile, regionFlag string, force bool) error
 	}
 
 	fmt.Fprintf(os.Stderr, "Logged in as %s\n", sess.SessionARN)
-	fmt.Fprintf(os.Stderr, "Saved profile %q to Keychain (expires in %s)\n",
+	fmt.Fprintf(os.Stderr, "Saved profile %q to secure store (expires in %s)\n",
 		profile, time.Until(sess.Expiration).Round(time.Second))
 	return nil
+}
+
+// stdinReadVerificationCode prompts the user on stderr and reads a single
+// line from stdin. Used by CROSS_DEVICE login; never invoked from the
+// credential_process path.
+func stdinReadVerificationCode() (string, error) {
+	fmt.Fprint(os.Stderr, "Verification code: ")
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil && line == "" {
+		return "", err
+	}
+	return strings.TrimSpace(line), nil
 }

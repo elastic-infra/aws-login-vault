@@ -2,6 +2,7 @@ package login
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"net/url"
@@ -30,7 +31,8 @@ type LoginResult struct {
 }
 
 // SameDeviceLogin drives the full SAME_DEVICE OAuth2 + PKCE + DPoP flow:
-// open the browser, wait for redirect, exchange the auth code for tokens.
+// open the browser, wait for redirect on a local callback server, exchange
+// the auth code for tokens.
 func SameDeviceLogin(ctx context.Context, cfg aws.Config) (*LoginResult, error) {
 	if cfg.Region == "" {
 		return nil, errors.New("region is required for login")
@@ -56,7 +58,7 @@ func SameDeviceLogin(ctx context.Context, cfg aws.Config) (*LoginResult, error) 
 	if err != nil {
 		return nil, err
 	}
-	authURL := buildAuthorizeURL(baseURL, state, challenge, cb.RedirectURI())
+	authURL := buildAuthorizeURL(baseURL, SameDeviceClientID, state, challenge, cb.RedirectURI())
 
 	fmt.Fprintln(os.Stderr, "Opening browser for AWS sign-in...")
 	fmt.Fprintf(os.Stderr, "If the browser does not open, visit:\n  %s\n", authURL)
@@ -70,14 +72,40 @@ func SameDeviceLogin(ctx context.Context, cfg aws.Config) (*LoginResult, error) 
 		return nil, errors.New("state mismatch in callback")
 	}
 
+	return exchangeAuthCode(ctx, cfg, key, SameDeviceClientID, code, verifier, cb.RedirectURI())
+}
+
+// buildAuthorizeURL composes the /v1/authorize URL for a given client_id and
+// redirect_uri. Used by both SAME_DEVICE and CROSS_DEVICE flows; only the
+// pair of (client_id, redirect_uri) differs between them.
+func buildAuthorizeURL(baseURL, clientID, state, challenge, redirectURI string) string {
+	q := url.Values{}
+	q.Set("response_type", "code")
+	q.Set("client_id", clientID)
+	q.Set("state", state)
+	// AWS uses the non-standard "SHA-256" label instead of RFC 7636's "S256".
+	q.Set("code_challenge_method", "SHA-256")
+	q.Set("scope", "openid")
+	q.Set("redirect_uri", redirectURI)
+	q.Set("code_challenge", challenge)
+	return baseURL + "/v1/authorize?" + q.Encode()
+}
+
+// exchangeAuthCode posts to /v1/token with grant_type=authorization_code and
+// builds a LoginResult from the response. The DPoP key, client_id, and
+// redirect_uri must be the same values that were used at /v1/authorize.
+func exchangeAuthCode(
+	ctx context.Context, cfg aws.Config, key *ecdsa.PrivateKey,
+	clientID, code, verifier, redirectURI string,
+) (*LoginResult, error) {
 	client := signin.NewFromConfig(cfg, WithDPoP(key))
 	out, err := client.CreateOAuth2Token(ctx, &signin.CreateOAuth2TokenInput{
 		TokenInput: &types.CreateOAuth2TokenRequestBody{
-			ClientId:     aws.String(SameDeviceClientID),
+			ClientId:     aws.String(clientID),
 			GrantType:    aws.String("authorization_code"),
 			Code:         aws.String(code),
 			CodeVerifier: aws.String(verifier),
-			RedirectUri:  aws.String(cb.RedirectURI()),
+			RedirectUri:  aws.String(redirectURI),
 		},
 	})
 	if err != nil {
@@ -109,19 +137,6 @@ func SameDeviceLogin(ctx context.Context, cfg aws.Config) (*LoginResult, error) 
 		DPoPKeyPEM:      pemStr,
 		SessionARN:      sessionARN,
 		Region:          cfg.Region,
-		ClientID:        SameDeviceClientID,
+		ClientID:        clientID,
 	}, nil
-}
-
-func buildAuthorizeURL(baseURL, state, challenge, redirectURI string) string {
-	q := url.Values{}
-	q.Set("response_type", "code")
-	q.Set("client_id", SameDeviceClientID)
-	q.Set("state", state)
-	// AWS uses the non-standard "SHA-256" label instead of RFC 7636's "S256".
-	q.Set("code_challenge_method", "SHA-256")
-	q.Set("scope", "openid")
-	q.Set("redirect_uri", redirectURI)
-	q.Set("code_challenge", challenge)
-	return baseURL + "/v1/authorize?" + q.Encode()
 }
