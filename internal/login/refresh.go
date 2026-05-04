@@ -25,7 +25,7 @@ func Refresh(ctx context.Context, cfg aws.Config, prev *LoginResult) (*LoginResu
 	client := signin.NewFromConfig(cfg, WithDPoP(key))
 	out, err := client.CreateOAuth2Token(ctx, &signin.CreateOAuth2TokenInput{
 		TokenInput: &types.CreateOAuth2TokenRequestBody{
-			ClientId:     aws.String(SameDeviceClientID),
+			ClientId:     aws.String(prev.ClientID),
 			GrantType:    aws.String("refresh_token"),
 			RefreshToken: aws.String(prev.RefreshToken),
 		},
