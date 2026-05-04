@@ -75,11 +75,12 @@ func Open() (*Store, error) {
 		KeychainSynchronizable:   false,
 		LibSecretCollectionName:  serviceName,
 		PassPrefix:               serviceName,
+		KeyCtlScope:              "user",
 		AllowedBackends: []keyring.BackendType{
 			keyring.KeychainBackend,      // macOS
 			keyring.SecretServiceBackend, // Linux GUI session (gnome-keyring / kwallet)
 			keyring.PassBackend,          // Linux pass + gpg-agent
-			keyring.KeyCtlBackend,        // Linux session-only fallback
+			keyring.KeyCtlBackend,        // Linux kernel keyring (UID-scoped)
 		},
 	})
 	if err != nil {
