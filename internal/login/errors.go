@@ -32,16 +32,14 @@ func ClassifyTokenError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var ade *types.AccessDeniedException
-	if errors.As(err, &ade) {
+	if ade, ok := errors.AsType[*types.AccessDeniedException](err); ok {
 		msg := ""
 		if ade.Message != nil {
 			msg = *ade.Message
 		}
 		return &TokenError{Code: ade.Error_, Message: msg, Cause: err}
 	}
-	var val *types.ValidationException
-	if errors.As(err, &val) {
+	if val, ok := errors.AsType[*types.ValidationException](err); ok {
 		msg := ""
 		if val.Message != nil {
 			msg = *val.Message
@@ -54,8 +52,8 @@ func ClassifyTokenError(err error) error {
 // IsReloginRequired reports whether the error indicates the user must run
 // `login` again (refresh cannot recover).
 func IsReloginRequired(err error) bool {
-	var te *TokenError
-	if !errors.As(err, &te) {
+	te, ok := errors.AsType[*TokenError](err)
+	if !ok {
 		return false
 	}
 	switch te.Code {

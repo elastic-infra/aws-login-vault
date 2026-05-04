@@ -303,8 +303,7 @@ func assumeRoleErrorWithHint(err error, sourceIdentity string) error {
 	if sourceIdentity == "" {
 		return err
 	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) && apiErr.ErrorCode() == "AccessDenied" {
+	if apiErr, ok := errors.AsType[smithy.APIError](err); ok && apiErr.ErrorCode() == "AccessDenied" {
 		if strings.Contains(apiErr.ErrorMessage(), "SetSourceIdentity") {
 			return fmt.Errorf("%w; the role's trust policy must allow sts:SetSourceIdentity, or drop --source-identity", err)
 		}
