@@ -16,7 +16,7 @@ A Go reimplementation of AWS CLI v2's `aws login` (Management Console authentica
 
 - **macOS** (Keychain backend; cgo required)
 - **Linux** (one of SecretService / Pass / KeyCtl; see prerequisites below)
-- Go 1.25+ (build time)
+- Go 1.26+ (build time)
 
 ## Install
 
