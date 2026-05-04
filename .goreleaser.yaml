@@ -19,10 +19,14 @@ builds:
     goarch:
       - amd64
       - arm64
+    mod_timestamp: '{{ .CommitTimestamp }}'
     flags:
       - -trimpath
     ldflags:
       - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.date={{.CommitDate}}
 
   - id: aws-login-vault-linux
     main: ./cmd/aws-login-vault
@@ -35,10 +39,14 @@ builds:
     goarch:
       - amd64
       - arm64
+    mod_timestamp: '{{ .CommitTimestamp }}'
     flags:
       - -trimpath
     ldflags:
       - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.ShortCommit}}
+      - -X main.date={{.CommitDate}}
 
 archives:
   - formats: [tar.gz]
@@ -52,7 +60,6 @@ changelog:
     exclude:
       - '^docs:'
       - '^test:'
-      - '^chore:'
       - '^ci:'
 
 release:
