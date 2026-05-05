@@ -27,6 +27,9 @@ builds:
       - -X main.version={{.Version}}
       - -X main.commit={{.ShortCommit}}
       - -X main.date={{.CommitDate}}
+    hooks:
+      post:
+        - cmd: codesign -s aws-login-vault -f --identifier com.elastic-infra.aws-login-vault {{ .Path }}
 
   - id: aws-login-vault-linux
     main: ./cmd/aws-login-vault
