@@ -337,21 +337,15 @@ func writeJSON(c exportable) error {
 
 func writeEnv(c exportable) error {
 	akid, secret, token, expiration, region := c.Creds()
-	fmt.Printf("export AWS_ACCESS_KEY_ID=%s\n", shellQuote(akid))
-	fmt.Printf("export AWS_SECRET_ACCESS_KEY=%s\n", shellQuote(secret))
+	fmt.Printf("export AWS_ACCESS_KEY_ID=%s\n", akid)
+	fmt.Printf("export AWS_SECRET_ACCESS_KEY=%s\n", secret)
 	if token != "" {
-		fmt.Printf("export AWS_SESSION_TOKEN=%s\n", shellQuote(token))
+		fmt.Printf("export AWS_SESSION_TOKEN=%s\n", token)
 	}
-	fmt.Printf("export AWS_CREDENTIAL_EXPIRATION=%s\n", shellQuote(expiration.UTC().Format(time.RFC3339)))
+	fmt.Printf("export AWS_CREDENTIAL_EXPIRATION=%s\n", expiration.UTC().Format(time.RFC3339))
 	if region != "" {
-		fmt.Printf("export AWS_REGION=%s\n", shellQuote(region))
-		fmt.Printf("export AWS_DEFAULT_REGION=%s\n", shellQuote(region))
+		fmt.Printf("export AWS_REGION=%s\n", region)
+		fmt.Printf("export AWS_DEFAULT_REGION=%s\n", region)
 	}
 	return nil
-}
-
-// shellQuote wraps a value in single quotes, escaping embedded quotes so the
-// output is safe to paste into bash/zsh.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
