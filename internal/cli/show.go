@@ -11,22 +11,22 @@ import (
 	"github.com/hkobayash/aws-login-vault/internal/keychain"
 )
 
-func newShowCmd() *cobra.Command {
+func newShowCmd(sf *storeFlags) *cobra.Command {
 	var reveal bool
 	cmd := &cobra.Command{
 		Use:   "show PROFILE",
 		Short: "Show details of a cached profile",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runShow(args[0], reveal)
+			return runShow(sf, args[0], reveal)
 		},
 	}
 	cmd.Flags().BoolVar(&reveal, "reveal", false, "print secret values in the clear")
 	return cmd
 }
 
-func runShow(profile string, reveal bool) error {
-	store, err := keychain.Open()
+func runShow(sf *storeFlags, profile string, reveal bool) error {
+	store, err := openStore(sf)
 	if err != nil {
 		return err
 	}

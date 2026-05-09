@@ -19,7 +19,7 @@ import (
 
 const loginLockTimeout = 30 * time.Second
 
-func newLoginCmd() *cobra.Command {
+func newLoginCmd(sf *storeFlags) *cobra.Command {
 	var (
 		profile string
 		region  string
@@ -30,7 +30,7 @@ func newLoginCmd() *cobra.Command {
 		Use:   "login",
 		Short: "Sign in via the browser and cache credentials in the secure store",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLogin(cmd.Context(), profile, region, force, remote)
+			return runLogin(cmd.Context(), sf, profile, region, force, remote)
 		},
 	}
 	cmd.Flags().StringVar(&profile, "profile", defaultProfile, "profile name (used as keychain entry key)")
@@ -41,13 +41,13 @@ func newLoginCmd() *cobra.Command {
 	return cmd
 }
 
-func runLogin(ctx context.Context, profile, regionFlag string, force, remote bool) error {
+func runLogin(ctx context.Context, sf *storeFlags, profile, regionFlag string, force, remote bool) error {
 	region, err := awsconfig.ResolveRegion(ctx, profile, regionFlag)
 	if err != nil {
 		return err
 	}
 
-	store, err := keychain.Open()
+	store, err := openStore(sf)
 	if err != nil {
 		return err
 	}

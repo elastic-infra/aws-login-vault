@@ -91,14 +91,14 @@ region = us-east-1
 ### Command reference
 
 ```
-aws-login-vault login   [--profile NAME] [--region R] [--force]
-aws-login-vault logout  [--profile NAME]
-aws-login-vault list
-aws-login-vault export  [--profile NAME] [--format json|env]
-                        [--role ARN] [--role-session-name NAME]
-                        [--source-identity auto|<val>] [--role-duration DUR]
-                        [--auto-login]
-aws-login-vault show    PROFILE [--reveal]
+aws-login-vault [--backend B] login   [--profile NAME] [--region R] [--force] [--remote]
+aws-login-vault [--backend B] logout  [--profile NAME]
+aws-login-vault [--backend B] list
+aws-login-vault [--backend B] export  [--profile NAME] [--format json|env]
+                                      [--role ARN] [--role-session-name NAME]
+                                      [--source-identity auto|<val>] [--role-duration DUR]
+                                      [--auto-login]
+aws-login-vault [--backend B] show    PROFILE [--reveal]
 ```
 
 | Command | Role |
@@ -120,6 +120,17 @@ aws-login-vault show    PROFILE [--reveal]
 | `--source-identity` | `auto` (derived from `sub`) or any literal value | unset (SetSourceIdentity is not sent) |
 | `--role-duration` | DurationSeconds for AssumeRole | 1h |
 | `--auto-login` | Run login automatically when unauthenticated (rejected over SSH) | enable globally with `AWS_LOGIN_VAULT_AUTO_LOGIN=1` |
+
+### Store backend
+
+`--backend` (root persistent flag) forces a specific secure store. Without it, the historical auto-detect order is used.
+
+| Flag / env | Allowed values | Behavior |
+|---|---|---|
+| `--backend` | `keychain`, `secret-service`, `pass`, `keyctl` | Forces the named backend. If it is unavailable on the host, the command fails immediately (no silent fallback) |
+| `AWS_LOGIN_VAULT_BACKEND` | same as above | Default for `--backend`. Useful for shells that always want the same backend |
+
+Common use case: on a Linux GUI session where `gnome-keyring` is running, the default order picks SecretService. Pass `--backend pass` (or set `AWS_LOGIN_VAULT_BACKEND=pass`) to use the on-disk gpg-encrypted store instead.
 
 ### auto-login
 
@@ -198,7 +209,7 @@ Session-scoped. Because entries vanish on reboot / logout, KeyCtl is treated as 
 
 ### Backend selection order
 
-The `AllowedBackends` priority is: **SecretService → Pass → KeyCtl**. The first available one is picked. Switching explicitly currently requires killing the GUI session, removing pass's `~/.password-store`, etc. (a `--backend` flag is under consideration).
+Auto-detect priority is: **SecretService → Pass → KeyCtl**, and the first available one is picked. To override, pass `--backend pass` (or set `AWS_LOGIN_VAULT_BACKEND=pass`); see [Store backend](#store-backend) above. Selection is strict — if the named backend is unavailable on the host, the command exits with an error rather than falling back silently.
 
 ## Limitations / known issues
 

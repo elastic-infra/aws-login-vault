@@ -3,6 +3,8 @@ package keychain
 import (
 	"strings"
 	"testing"
+
+	"github.com/99designs/keyring"
 )
 
 func TestAssumedKey(t *testing.T) {
@@ -43,6 +45,40 @@ func TestAssumedKey(t *testing.T) {
 			got := AssumedKey(tt.profile, tt.role, tt.identity)
 			if got != tt.want {
 				t.Errorf("AssumedKey = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseBackend(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		want    keyring.BackendType
+		wantErr bool
+	}{
+		{name: "empty falls back to auto", in: "", want: ""},
+		{name: "keychain", in: "keychain", want: keyring.KeychainBackend},
+		{name: "secret-service", in: "secret-service", want: keyring.SecretServiceBackend},
+		{name: "pass", in: "pass", want: keyring.PassBackend},
+		{name: "keyctl", in: "keyctl", want: keyring.KeyCtlBackend},
+		{name: "unsupported wincred", in: "wincred", wantErr: true},
+		{name: "trailing whitespace not normalized", in: "keychain ", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseBackend(tt.in)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("ParseBackend(%q): want error, got nil", tt.in)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseBackend(%q): unexpected error %v", tt.in, err)
+			}
+			if got != tt.want {
+				t.Errorf("ParseBackend(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
 	}

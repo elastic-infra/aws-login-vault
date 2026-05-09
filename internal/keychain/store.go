@@ -63,11 +63,43 @@ type Store struct {
 	kr keyring.Keyring
 }
 
-func Open() (*Store, error) {
+// Options selects which backend to open. Zero value preserves the historical
+// auto-detect order.
+type Options struct {
+	// Backend forces a specific backend. Empty means "try the default order".
+	Backend keyring.BackendType
+}
+
+var defaultAllowedBackends = []keyring.BackendType{
+	keyring.KeychainBackend,      // macOS
+	keyring.SecretServiceBackend, // Linux GUI session (gnome-keyring / kwallet)
+	keyring.PassBackend,          // Linux pass + gpg-agent
+	keyring.KeyCtlBackend,        // Linux kernel keyring (UID-scoped)
+}
+
+// ParseBackend validates a user-supplied backend name. An empty string is
+// allowed and resolves to "auto-detect".
+func ParseBackend(s string) (keyring.BackendType, error) {
+	switch s {
+	case "":
+		return "", nil
+	case string(keyring.KeychainBackend),
+		string(keyring.SecretServiceBackend),
+		string(keyring.PassBackend),
+		string(keyring.KeyCtlBackend):
+		return keyring.BackendType(s), nil
+	default:
+		return "", fmt.Errorf("unsupported backend %q (allowed: keychain, secret-service, pass, keyctl)", s)
+	}
+}
+
+func Open(opts Options) (*Store, error) {
 	// All name fields are set to serviceName so entries land in a single
 	// namespace ("aws-login-vault") regardless of which backend is selected.
-	// AllowedBackends is ordered by preference: GUI session store first, then
-	// the on-disk gpg-encrypted store, then the session-only kernel keyring.
+	allowed := defaultAllowedBackends
+	if opts.Backend != "" {
+		allowed = []keyring.BackendType{opts.Backend}
+	}
 	kr, err := keyring.Open(keyring.Config{
 		ServiceName:              serviceName,
 		KeychainName:             serviceName, // macOS only: ~/Library/Keychains/aws-login-vault.keychain-db
@@ -76,14 +108,12 @@ func Open() (*Store, error) {
 		LibSecretCollectionName:  serviceName,
 		PassPrefix:               serviceName,
 		KeyCtlScope:              "user",
-		AllowedBackends: []keyring.BackendType{
-			keyring.KeychainBackend,      // macOS
-			keyring.SecretServiceBackend, // Linux GUI session (gnome-keyring / kwallet)
-			keyring.PassBackend,          // Linux pass + gpg-agent
-			keyring.KeyCtlBackend,        // Linux kernel keyring (UID-scoped)
-		},
+		AllowedBackends:          allowed,
 	})
 	if err != nil {
+		if opts.Backend != "" {
+			return nil, fmt.Errorf("open keychain (backend=%s): %w", opts.Backend, err)
+		}
 		return nil, fmt.Errorf("open keychain: %w", err)
 	}
 	return &Store{kr: kr}, nil

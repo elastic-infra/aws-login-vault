@@ -8,22 +8,20 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-
-	"github.com/hkobayash/aws-login-vault/internal/keychain"
 )
 
-func newListCmd() *cobra.Command {
+func newListCmd(sf *storeFlags) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List cached profiles",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runList()
+			return runList(sf)
 		},
 	}
 }
 
-func runList() error {
-	store, err := keychain.Open()
+func runList(sf *storeFlags) error {
+	store, err := openStore(sf)
 	if err != nil {
 		return err
 	}

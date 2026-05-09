@@ -10,21 +10,21 @@ import (
 	"github.com/hkobayash/aws-login-vault/internal/keychain"
 )
 
-func newLogoutCmd() *cobra.Command {
+func newLogoutCmd(sf *storeFlags) *cobra.Command {
 	var profile string
 	cmd := &cobra.Command{
 		Use:   "logout",
 		Short: "Remove a cached session from the Keychain",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLogout(profile)
+			return runLogout(sf, profile)
 		},
 	}
 	cmd.Flags().StringVar(&profile, "profile", defaultProfile, "profile name")
 	return cmd
 }
 
-func runLogout(profile string) error {
-	store, err := keychain.Open()
+func runLogout(sf *storeFlags, profile string) error {
+	store, err := openStore(sf)
 	if err != nil {
 		return err
 	}

@@ -59,13 +59,13 @@ type exportOptions struct {
 	autoLogin       bool
 }
 
-func newExportCmd() *cobra.Command {
+func newExportCmd(sf *storeFlags) *cobra.Command {
 	opts := exportOptions{}
 	cmd := &cobra.Command{
 		Use:   "export",
 		Short: "Print credentials for a profile (for credential_process or shell use)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runExport(cmd.Context(), opts)
+			return runExport(cmd.Context(), sf, opts)
 		},
 	}
 	cmd.Flags().StringVar(&opts.profile, "profile", defaultProfile, "profile name")
@@ -79,12 +79,12 @@ func newExportCmd() *cobra.Command {
 	return cmd
 }
 
-func runExport(ctx context.Context, opts exportOptions) error {
+func runExport(ctx context.Context, sf *storeFlags, opts exportOptions) error {
 	if opts.format != formatJSON && opts.format != formatEnv {
 		return fmt.Errorf("unknown --format %q (expected json or env)", opts.format)
 	}
 
-	store, err := keychain.Open()
+	store, err := openStore(sf)
 	if err != nil {
 		return err
 	}
