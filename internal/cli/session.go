@@ -1,9 +1,19 @@
 package cli
 
 import (
+	"context"
+	"errors"
+	"fmt"
+
+	"github.com/hkobayash/aws-login-vault/internal/awsconfig"
 	"github.com/hkobayash/aws-login-vault/internal/keychain"
 	loginflow "github.com/hkobayash/aws-login-vault/internal/login"
 )
+
+// ErrSessionARNMismatch is returned when saving would change the SessionARN of
+// an existing profile without --force. Callers wrap this with context-specific
+// remediation hints (login vs. auto-login).
+var ErrSessionARNMismatch = errors.New("session ARN mismatch")
 
 func sessionFromLoginResult(r *loginflow.LoginResult) *keychain.Session {
 	return &keychain.Session{
@@ -17,4 +27,52 @@ func sessionFromLoginResult(r *loginflow.LoginResult) *keychain.Session {
 		Region:          r.Region,
 		ClientID:        r.ClientID,
 	}
+}
+
+// saveSessionWithGuard persists new under profile, but refuses to overwrite
+// an existing entry whose SessionARN differs unless force is set. This is the
+// single chokepoint that prevents accidental account takeover regardless of
+// whether the save originated from `login` or `export --auto-login`.
+func saveSessionWithGuard(store *keychain.Store, profile string, prev, new *keychain.Session, force bool) error {
+	if prev != nil && prev.SessionARN != new.SessionARN && !force {
+		return fmt.Errorf("%w: profile %q was %s, but got %s",
+			ErrSessionARNMismatch, profile, prev.SessionARN, new.SessionARN)
+	}
+	if err := store.Save(profile, new); err != nil {
+		return fmt.Errorf("save session: %w", err)
+	}
+	return nil
+}
+
+type browserLoginOptions struct {
+	profile string
+	region  string
+	prev    *keychain.Session
+	force   bool
+	remote  bool
+}
+
+// performBrowserLogin runs the SAME_DEVICE or CROSS_DEVICE OAuth flow and
+// persists the resulting session through saveSessionWithGuard.
+func performBrowserLogin(ctx context.Context, store *keychain.Store, opts browserLoginOptions) (*keychain.Session, error) {
+	cfg, err := awsconfig.NewAWSConfig(ctx, opts.region)
+	if err != nil {
+		return nil, fmt.Errorf("build aws config: %w", err)
+	}
+
+	var result *loginflow.LoginResult
+	if opts.remote {
+		result, err = loginflow.CrossDeviceLogin(ctx, cfg, stdinReadVerificationCode)
+	} else {
+		result, err = loginflow.SameDeviceLogin(ctx, cfg)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	sess := sessionFromLoginResult(result)
+	if err := saveSessionWithGuard(store, opts.profile, opts.prev, sess, opts.force); err != nil {
+		return nil, err
+	}
+	return sess, nil
 }

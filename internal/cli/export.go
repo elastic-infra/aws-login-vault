@@ -158,7 +158,7 @@ func refreshBaseSession(ctx context.Context, store *keychain.Store, profile stri
 	}
 
 	if loginflow.IsReloginRequired(err) && autoLogin {
-		return runAutoLogin(ctx, store, profile, prev.Region)
+		return runAutoLogin(ctx, store, profile, prev.Region, prev)
 	}
 	if loginflow.IsReloginRequired(err) {
 		return nil, fmt.Errorf("refresh failed (%w); run: aws-login-vault login --profile %s (or pass --auto-login)", err, profile)
@@ -186,24 +186,25 @@ func bootstrapBaseSession(ctx context.Context, store *keychain.Store, profile st
 	if err != nil {
 		return nil, err
 	}
-	return runAutoLogin(ctx, store, profile, region)
+	return runAutoLogin(ctx, store, profile, region, nil)
 }
 
-func runAutoLogin(ctx context.Context, store *keychain.Store, profile, region string) (*keychain.Session, error) {
+func runAutoLogin(ctx context.Context, store *keychain.Store, profile, region string, prev *keychain.Session) (*keychain.Session, error) {
 	if isSSHSession() {
 		return nil, fmt.Errorf("auto-login cannot reach a local browser in a remote SSH session; run: aws-login-vault login --profile %s on your local machine", profile)
 	}
-	cfg, err := awsconfig.NewAWSConfig(ctx, region)
+	sess, err := performBrowserLogin(ctx, store, browserLoginOptions{
+		profile: profile,
+		region:  region,
+		prev:    prev,
+		force:   false,
+		remote:  false,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("build aws config: %w", err)
-	}
-	result, err := loginflow.SameDeviceLogin(ctx, cfg)
-	if err != nil {
+		if errors.Is(err, ErrSessionARNMismatch) {
+			return nil, fmt.Errorf("%w; run: aws-login-vault login --profile %s --force if this is intentional", err, profile)
+		}
 		return nil, err
-	}
-	sess := sessionFromLoginResult(result)
-	if err := store.Save(profile, sess); err != nil {
-		return nil, fmt.Errorf("save session: %w", err)
 	}
 	return sess, nil
 }

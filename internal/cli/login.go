@@ -14,7 +14,6 @@ import (
 	"github.com/hkobayash/aws-login-vault/internal/awsconfig"
 	"github.com/hkobayash/aws-login-vault/internal/keychain"
 	"github.com/hkobayash/aws-login-vault/internal/lock"
-	loginflow "github.com/hkobayash/aws-login-vault/internal/login"
 )
 
 const loginLockTimeout = 30 * time.Second
@@ -63,33 +62,18 @@ func runLogin(ctx context.Context, sf *storeFlags, profile, regionFlag string, f
 		return err
 	}
 
-	cfg, err := awsconfig.NewAWSConfig(ctx, region)
+	sess, err := performBrowserLogin(ctx, store, browserLoginOptions{
+		profile: profile,
+		region:  region,
+		prev:    existing,
+		force:   force,
+		remote:  remote,
+	})
 	if err != nil {
-		return fmt.Errorf("build aws config: %w", err)
-	}
-
-	var result *loginflow.LoginResult
-	if remote {
-		result, err = loginflow.CrossDeviceLogin(ctx, cfg, stdinReadVerificationCode)
-	} else {
-		result, err = loginflow.SameDeviceLogin(ctx, cfg)
-	}
-	if err != nil {
+		if errors.Is(err, ErrSessionARNMismatch) {
+			return fmt.Errorf("%w; use --force if this is intentional", err)
+		}
 		return err
-	}
-
-	// Guard against accidental account takeover: a different sub on the same
-	// profile name likely means the user logged into the wrong AWS account.
-	if existing != nil && existing.SessionARN != result.SessionARN && !force {
-		return fmt.Errorf(
-			"profile %q was %s, but logged in as %s. use --force if this is intentional",
-			profile, existing.SessionARN, result.SessionARN,
-		)
-	}
-
-	sess := sessionFromLoginResult(result)
-	if err := store.Save(profile, sess); err != nil {
-		return fmt.Errorf("save session: %w", err)
 	}
 
 	fmt.Fprintf(os.Stderr, "Logged in as %s\n", sess.SessionARN)
