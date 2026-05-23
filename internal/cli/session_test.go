@@ -2,12 +2,15 @@ package cli
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/hkobayash/aws-login-vault/internal/keychain"
 )
 
 func TestSaveSessionWithGuard(t *testing.T) {
+	const sentinelRefreshToken = "after-save"
+
 	tests := []struct {
 		name    string
 		prev    *keychain.Session
@@ -49,12 +52,15 @@ func TestSaveSessionWithGuard(t *testing.T) {
 					t.Fatalf("seed prev: %v", err)
 				}
 			}
-			newSess := &keychain.Session{SessionARN: tt.newARN}
+			newSess := &keychain.Session{SessionARN: tt.newARN, RefreshToken: sentinelRefreshToken}
 			err := saveSessionWithGuard(store, "default", tt.prev, newSess, tt.force)
 
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
 					t.Fatalf("err = %v, want errors.Is(%v)", err, tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.prev.SessionARN) || !strings.Contains(err.Error(), tt.newARN) {
+					t.Errorf("err message = %q, want both %q and %q in message", err.Error(), tt.prev.SessionARN, tt.newARN)
 				}
 				got, loadErr := store.Load("default")
 				if loadErr != nil {
@@ -62,6 +68,9 @@ func TestSaveSessionWithGuard(t *testing.T) {
 				}
 				if got.SessionARN != tt.prev.SessionARN {
 					t.Errorf("store overwritten: got %q, want %q", got.SessionARN, tt.prev.SessionARN)
+				}
+				if got.RefreshToken == sentinelRefreshToken {
+					t.Errorf("store overwritten with new session despite guard rejection")
 				}
 				return
 			}
@@ -74,7 +83,10 @@ func TestSaveSessionWithGuard(t *testing.T) {
 				t.Fatalf("load: %v", err)
 			}
 			if got.SessionARN != tt.newARN {
-				t.Errorf("got %q, want %q", got.SessionARN, tt.newARN)
+				t.Errorf("got SessionARN %q, want %q", got.SessionARN, tt.newARN)
+			}
+			if got.RefreshToken != sentinelRefreshToken {
+				t.Errorf("store not updated: RefreshToken = %q, want %q", got.RefreshToken, sentinelRefreshToken)
 			}
 		})
 	}

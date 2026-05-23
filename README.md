@@ -140,12 +140,12 @@ When `--auto-login` (or the environment variable `AWS_LOGIN_VAULT_AUTO_LOGIN=1`)
 $SSH_CONNECTION / $SSH_TTY is set → error (browser cannot reach a remote box)
 otherwise                         → launch browser → wait for auth → emit creds
                                     if the browser fails to open, print the URL on stderr and exit 1
-                                    if the resulting sub differs from the saved one, error out
+                                    if a session was already saved for the profile and the resulting sub differs, error out
 ```
 
 To honor the `credential_process` contract, **stdin is never read** (no interactive prompt).
 
-Like `login`, auto-login refuses to overwrite an existing session when the new `sub` differs (prevents silent account takeover when the browser is signed in to a different AWS account). Recover with `aws-login-vault login --profile NAME --force`, or `logout` first.
+Like `login`, auto-login refuses to overwrite an existing session when the new `sub` differs (prevents silent account takeover when the browser is signed in to a different AWS account). The very first save for a profile is not guarded — it has no prior sub to compare against. Recover with `aws-login-vault login --profile NAME --force`, or `logout` first.
 
 ### AssumeRole cache
 

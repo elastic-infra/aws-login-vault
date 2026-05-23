@@ -179,14 +179,22 @@ func bootstrapBaseSession(ctx context.Context, store *keychain.Store, profile st
 	}
 	defer func() { _ = pl.Release() }()
 
-	if sess, err := store.Load(profile); err == nil && time.Until(sess.Expiration) > refreshThreshold {
-		return sess, nil
+	var prev *keychain.Session
+	sess, err := store.Load(profile)
+	if err != nil && !errors.Is(err, keychain.ErrNotFound) {
+		return nil, err
+	}
+	if sess != nil {
+		if time.Until(sess.Expiration) > refreshThreshold {
+			return sess, nil
+		}
+		prev = sess
 	}
 	region, err := awsconfig.ResolveRegion(ctx, profile, "")
 	if err != nil {
 		return nil, err
 	}
-	return runAutoLogin(ctx, store, profile, region, nil)
+	return runAutoLogin(ctx, store, profile, region, prev)
 }
 
 func runAutoLogin(ctx context.Context, store *keychain.Store, profile, region string, prev *keychain.Session) (*keychain.Session, error) {
@@ -202,7 +210,7 @@ func runAutoLogin(ctx context.Context, store *keychain.Store, profile, region st
 	})
 	if err != nil {
 		if errors.Is(err, ErrSessionARNMismatch) {
-			return nil, fmt.Errorf("%w; run: aws-login-vault login --profile %s --force if this is intentional", err, profile)
+			return nil, fmt.Errorf("%w; recover with: aws-login-vault login --profile %s --force, or aws-login-vault logout --profile %s first", err, profile, profile)
 		}
 		return nil, err
 	}

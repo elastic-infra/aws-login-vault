@@ -71,7 +71,7 @@ func runLogin(ctx context.Context, sf *storeFlags, profile, regionFlag string, f
 	})
 	if err != nil {
 		if errors.Is(err, ErrSessionARNMismatch) {
-			return fmt.Errorf("%w; use --force if this is intentional", err)
+			return fmt.Errorf("%w; use --force with --profile %s if this is intentional", err, profile)
 		}
 		return err
 	}

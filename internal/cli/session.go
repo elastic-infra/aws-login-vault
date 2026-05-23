@@ -29,16 +29,20 @@ func sessionFromLoginResult(r *loginflow.LoginResult) *keychain.Session {
 	}
 }
 
-// saveSessionWithGuard persists new under profile, but refuses to overwrite
-// an existing entry whose SessionARN differs unless force is set. This is the
-// single chokepoint that prevents accidental account takeover regardless of
-// whether the save originated from `login` or `export --auto-login`.
-func saveSessionWithGuard(store *keychain.Store, profile string, prev, new *keychain.Session, force bool) error {
-	if prev != nil && prev.SessionARN != new.SessionARN && !force {
+// saveSessionWithGuard persists next under profile, refusing to overwrite an
+// existing entry whose SessionARN differs from prev unless force is set.
+// Callers must hold the profile flock and pass a freshly loaded prev — the
+// guard trusts the caller-supplied pointer and does not re-read the store.
+// refreshBaseSession's happy path intentionally bypasses this guard because
+// a successful OAuth refresh against the same refresh token typically
+// returns the same sub. If that assumption proves false in practice, route
+// refresh through this helper as well.
+func saveSessionWithGuard(store *keychain.Store, profile string, prev, next *keychain.Session, force bool) error {
+	if prev != nil && prev.SessionARN != next.SessionARN && !force {
 		return fmt.Errorf("%w: profile %q was %s, but got %s",
-			ErrSessionARNMismatch, profile, prev.SessionARN, new.SessionARN)
+			ErrSessionARNMismatch, profile, prev.SessionARN, next.SessionARN)
 	}
-	if err := store.Save(profile, new); err != nil {
+	if err := store.Save(profile, next); err != nil {
 		return fmt.Errorf("save session: %w", err)
 	}
 	return nil
