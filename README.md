@@ -168,7 +168,7 @@ aws-login-vault server --profile dev --role arn:aws:iam::123456789012:role/Ops -
 
 # block mode: print the env to set elsewhere, then wait until interrupted
 aws-login-vault server --profile dev
-#   export AWS_CONTAINER_CREDENTIALS_FULL_URI=http://127.0.0.1:51234/
+#   export AWS_CONTAINER_CREDENTIALS_FULL_URI=http://127.0.0.1:51234
 #   export AWS_CONTAINER_AUTHORIZATION_TOKEN=<token>
 ```
 

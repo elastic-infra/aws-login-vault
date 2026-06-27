@@ -193,7 +193,7 @@ func newCredServer(ctx context.Context, token string, fetch func(context.Context
 		return nil, err
 	}
 	cs := &credServer{
-		url:   fmt.Sprintf("http://127.0.0.1:%d/", ln.Addr().(*net.TCPAddr).Port),
+		url:   fmt.Sprintf("http://%s", ln.Addr().String()),
 		token: token,
 		ctx:   ctx,
 		fetch: fetch,
