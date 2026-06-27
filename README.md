@@ -254,4 +254,4 @@ Auto-detect priority is: **SecretService → Pass → KeyCtl**, and the first av
 
 ## License
 
-Not set (intended for internal use).
+MIT License. See [LICENSE](LICENSE).
