@@ -12,6 +12,7 @@ import (
 	osexec "os/exec"
 	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -46,13 +47,7 @@ func newServerCmd(sf *storeFlags) *cobra.Command {
 	// own flags: `server --profile dev aws s3 ls --region x` passes --region to
 	// the child. Server flags must precede the command.
 	cmd.Flags().SetInterspersed(false)
-	cmd.Flags().StringVar(&opts.profile, "profile", defaultProfile, "profile name")
-	cmd.Flags().StringVar(&opts.roleARN, "role", "", "role ARN to assume (enables AssumeRole mode)")
-	cmd.Flags().StringVar(&opts.roleSessionName, "role-session-name", "", "RoleSessionName override (default: derived from sub)")
-	cmd.Flags().StringVar(&opts.sourceIdentity, "source-identity", "", `SourceIdentity for AssumeRole. "auto" derives from sub; any other value is sent literally`)
-	cmd.Flags().DurationVar(&opts.roleDuration, "role-duration", 0, "AssumeRole DurationSeconds (default 1h)")
-	cmd.Flags().BoolVar(&opts.autoLogin, "auto-login", os.Getenv(envAutoLogin) == "1",
-		"run login automatically if the profile is not authenticated (requires a local GUI session)")
+	registerCredentialFlags(cmd, &opts)
 	return cmd
 }
 
@@ -105,27 +100,30 @@ func runServerBlocking(ctx context.Context, srv *credServer, profile string) err
 			"  export AWS_CONTAINER_CREDENTIALS_FULL_URI=%s\n"+
 			"  export AWS_CONTAINER_AUTHORIZATION_TOKEN=%s\n\n"+
 			"Press Ctrl-C to stop.\n",
-		profile, srv.baseURL(), srv.baseURL(), srv.token)
+		profile, srv.url, srv.url, srv.token)
 	<-ctx.Done()
 	return nil
 }
 
 // runServerExec sets the container env and runs args as a child process,
-// forwarding signals so the child decides its own exit code (aws-vault's
-// runSubProcess pattern; CommandContext's SIGKILL would clobber it).
+// forwarding termination signals so the child decides its own exit code
+// (aws-vault's runSubProcess pattern; CommandContext's SIGKILL would clobber
+// it).
 func runServerExec(srv *credServer, args []string, region string) error {
 	cmd := osexec.Command(args[0], args[1:]...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = buildChildEnv(os.Environ(), srv.baseURL(), srv.token, region)
+	cmd.Env = buildChildEnv(os.Environ(), srv.url, srv.token, region)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start %q: %w", args[0], err)
 	}
 
+	// Forward termination signals only; an unfiltered Notify also relays the
+	// runtime's frequent SIGURG to the child.
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGHUP)
 	defer signal.Stop(sigCh)
 	go func() {
 		for sig := range sigCh {
@@ -182,11 +180,11 @@ func buildChildEnv(base []string, fullURI, token, region string) []string {
 // credServer is a loopback ECS container credential server. Each request
 // re-fetches credentials so the SDK transparently gets refreshed creds.
 type credServer struct {
-	listener net.Listener
-	server   *http.Server
-	token    string
-	ctx      context.Context
-	fetch    func(ctx context.Context) (exportable, error)
+	url    string
+	server *http.Server
+	token  string
+	ctx    context.Context
+	fetch  func(ctx context.Context) (exportable, error)
 }
 
 func newCredServer(ctx context.Context, token string, fetch func(context.Context) (exportable, error)) (*credServer, error) {
@@ -195,20 +193,16 @@ func newCredServer(ctx context.Context, token string, fetch func(context.Context
 		return nil, err
 	}
 	cs := &credServer{
-		listener: ln,
-		token:    token,
-		ctx:      ctx,
-		fetch:    fetch,
+		url:   fmt.Sprintf("http://127.0.0.1:%d/", ln.Addr().(*net.TCPAddr).Port),
+		token: token,
+		ctx:   ctx,
+		fetch: fetch,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", cs.handle)
 	cs.server = &http.Server{Handler: mux}
 	go func() { _ = cs.server.Serve(ln) }()
 	return cs, nil
-}
-
-func (cs *credServer) baseURL() string {
-	return fmt.Sprintf("http://127.0.0.1:%d/", cs.listener.Addr().(*net.TCPAddr).Port)
 }
 
 func (cs *credServer) handle(w http.ResponseWriter, r *http.Request) {

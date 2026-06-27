@@ -68,15 +68,21 @@ func newExportCmd(sf *storeFlags) *cobra.Command {
 			return runExport(cmd.Context(), sf, opts)
 		},
 	}
-	cmd.Flags().StringVar(&opts.profile, "profile", defaultProfile, "profile name")
+	registerCredentialFlags(cmd, &opts)
 	cmd.Flags().StringVar(&opts.format, "format", formatJSON, "output format: json | env")
+	return cmd
+}
+
+// registerCredentialFlags registers the flags shared by export and server:
+// profile selection plus the AssumeRole / auto-login knobs.
+func registerCredentialFlags(cmd *cobra.Command, opts *exportOptions) {
+	cmd.Flags().StringVar(&opts.profile, "profile", defaultProfile, "profile name")
 	cmd.Flags().StringVar(&opts.roleARN, "role", "", "role ARN to assume (enables AssumeRole mode)")
 	cmd.Flags().StringVar(&opts.roleSessionName, "role-session-name", "", "RoleSessionName override (default: derived from sub)")
 	cmd.Flags().StringVar(&opts.sourceIdentity, "source-identity", "", `SourceIdentity for AssumeRole. "auto" derives from sub; any other value is sent literally`)
 	cmd.Flags().DurationVar(&opts.roleDuration, "role-duration", 0, "AssumeRole DurationSeconds (default 1h)")
 	cmd.Flags().BoolVar(&opts.autoLogin, "auto-login", os.Getenv(envAutoLogin) == "1",
 		"run login automatically if the profile is not authenticated (requires a local GUI session)")
-	return cmd
 }
 
 func runExport(ctx context.Context, sf *storeFlags, opts exportOptions) error {
