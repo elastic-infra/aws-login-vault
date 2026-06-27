@@ -34,6 +34,7 @@ func NewRoot() *cobra.Command {
 		newLogoutCmd(sf),
 		newListCmd(sf),
 		newExportCmd(sf),
+		newServerCmd(sf),
 		newShowCmd(sf),
 	)
 	return root

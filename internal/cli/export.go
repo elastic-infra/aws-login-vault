@@ -89,20 +89,25 @@ func runExport(ctx context.Context, sf *storeFlags, opts exportOptions) error {
 		return err
 	}
 
-	baseSession, err := prepareBaseSession(ctx, store, opts.profile, opts.autoLogin)
+	creds, err := resolveCredentials(ctx, store, opts)
 	if err != nil {
 		return err
 	}
+	return writeCredentials(creds, opts.format)
+}
 
+// resolveCredentials returns the credentials to hand out for opts: the base
+// login session, or the assumed-role session when --role is set. Shared by
+// export and the server command.
+func resolveCredentials(ctx context.Context, store *keychain.Store, opts exportOptions) (exportable, error) {
+	base, err := prepareBaseSession(ctx, store, opts.profile, opts.autoLogin)
+	if err != nil {
+		return nil, err
+	}
 	if opts.roleARN == "" {
-		return writeCredentials(baseSession, opts.format)
+		return base, nil
 	}
-
-	assumed, err := prepareAssumedSession(ctx, store, baseSession, opts)
-	if err != nil {
-		return err
-	}
-	return writeCredentials(assumed, opts.format)
+	return prepareAssumedSession(ctx, store, base, opts)
 }
 
 // prepareBaseSession returns a valid (non-expiring-soon) login_session,

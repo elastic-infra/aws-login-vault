@@ -98,6 +98,9 @@ aws-login-vault [--backend B] export  [--profile NAME] [--format json|env]
                                       [--role ARN] [--role-session-name NAME]
                                       [--source-identity auto|<val>] [--role-duration DUR]
                                       [--auto-login]
+aws-login-vault [--backend B] server  [--profile NAME] [--role ARN] [--role-session-name NAME]
+                                      [--source-identity auto|<val>] [--role-duration DUR]
+                                      [--auto-login] [-- command [args...]]
 aws-login-vault [--backend B] show    PROFILE [--reveal]
 ```
 
@@ -107,6 +110,7 @@ aws-login-vault [--backend B] show    PROFILE [--reveal]
 | `logout` | Remove the profile's login_session and every cached assumed-role entry tied to it from the store |
 | `list` | List stored profiles |
 | `export` | Print credential_process JSON / shell env on stdout. Refreshes before expiry; `--role` triggers AssumeRole |
+| `server` | Run a local ECS container credential server (`AWS_CONTAINER_CREDENTIALS_FULL_URI`). With a trailing command it sets the env and execs it; without one it prints the env and blocks until interrupted. Refreshes per request; `--role` triggers AssumeRole |
 | `show` | Inspect stored entries (secrets are masked; `--reveal` prints them in plain text) |
 
 ### `export` options
@@ -150,6 +154,34 @@ Like `login`, auto-login refuses to overwrite an existing session when the new `
 ### AssumeRole cache
 
 `export --role` results are cached in the store under the key `assumed/<profile>/<sha256(role-arn)>[/<source-identity>]`. AssumeRole is rerun once fewer than 5 minutes remain (the aws-vault style strategy). `logout` also drops every assumed entry tied to the profile.
+
+### `server` (ECS credential server)
+
+`server` runs a local ECS container credential server bound to `127.0.0.1` on a random port, an alternative to `credential_process` for long-running tooling. Each request re-fetches and refreshes credentials, so the consumer never has to deal with expiry. It accepts the same `--role` / `--source-identity` / `--role-duration` / `--auto-login` flags as `export`.
+
+Two modes, selected by whether a command is given (a leading `--` is optional; use it when the command has its own flags):
+
+```sh
+# exec mode: set the container env and run the command (its exit code is propagated)
+aws-login-vault server --profile dev -- aws s3 ls
+aws-login-vault server --profile dev --role arn:aws:iam::123456789012:role/Ops -- terraform plan
+
+# block mode: print the env to set elsewhere, then wait until interrupted
+aws-login-vault server --profile dev
+#   export AWS_CONTAINER_CREDENTIALS_FULL_URI=http://127.0.0.1:51234/
+#   export AWS_CONTAINER_AUTHORIZATION_TOKEN=<token>
+```
+
+In exec mode the child inherits the two `AWS_CONTAINER_*` variables (plus `AWS_REGION` / `AWS_DEFAULT_REGION`), and static credential / profile variables (`AWS_ACCESS_KEY_ID`, `AWS_PROFILE`, …) are stripped so the container provider wins. Signals are forwarded to the child, and its exit code becomes the process exit code.
+
+| Flag | Meaning | Default |
+|---|---|---|
+| `--profile` | Profile key in the store | `default` |
+| `--role` | Target role ARN for STS AssumeRole | (unset; specifying it switches to AssumeRole mode) |
+| `--role-session-name` | Override RoleSessionName | derived from `sub` |
+| `--source-identity` | `auto` (derived from `sub`) or any literal value | unset (SetSourceIdentity is not sent) |
+| `--role-duration` | DurationSeconds for AssumeRole | 1h |
+| `--auto-login` | Run login automatically when unauthenticated (rejected over SSH) | enable globally with `AWS_LOGIN_VAULT_AUTO_LOGIN=1` |
 
 ## Inspecting the store
 
