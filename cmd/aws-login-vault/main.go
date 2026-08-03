@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/hkobayash/aws-login-vault/internal/cli"
+	"github.com/elastic-infra/aws-login-vault/internal/cli"
 )
 
 var (

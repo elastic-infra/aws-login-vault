@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"github.com/hkobayash/aws-login-vault/internal/keychain"
+	"github.com/elastic-infra/aws-login-vault/internal/keychain"
 )
 
 // openStore resolves root-level flags into a keychain.Store, validating the

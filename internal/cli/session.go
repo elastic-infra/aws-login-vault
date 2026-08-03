@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/hkobayash/aws-login-vault/internal/awsconfig"
-	"github.com/hkobayash/aws-login-vault/internal/keychain"
-	loginflow "github.com/hkobayash/aws-login-vault/internal/login"
+	"github.com/elastic-infra/aws-login-vault/internal/awsconfig"
+	"github.com/elastic-infra/aws-login-vault/internal/keychain"
+	loginflow "github.com/elastic-infra/aws-login-vault/internal/login"
 )
 
 // ErrSessionARNMismatch is returned when saving would change the SessionARN of

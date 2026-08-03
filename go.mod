@@ -1,4 +1,4 @@
-module github.com/hkobayash/aws-login-vault
+module github.com/elastic-infra/aws-login-vault
 
 go 1.26.0
 

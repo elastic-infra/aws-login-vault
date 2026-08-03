@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/hkobayash/aws-login-vault/internal/keychain"
+	"github.com/elastic-infra/aws-login-vault/internal/keychain"
 )
 
 func newLogoutCmd(sf *storeFlags) *cobra.Command {
