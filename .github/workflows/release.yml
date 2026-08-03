@@ -33,6 +33,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.MACOS_SIGNING_P12_BASE64 }}
+          p12-password: ${{ secrets.MACOS_SIGNING_P12_PASSWORD }}
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
