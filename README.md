@@ -23,7 +23,7 @@ A Go reimplementation of AWS CLI v2's `aws login` (Management Console authentica
 ### From source
 
 ```bash
-go install github.com/hkobayash/aws-login-vault/cmd/aws-login-vault@latest
+go install github.com/elastic-infra/aws-login-vault/cmd/aws-login-vault@latest
 ```
 
 ### Binary (tagged release)

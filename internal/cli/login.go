@@ -11,9 +11,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/hkobayash/aws-login-vault/internal/awsconfig"
-	"github.com/hkobayash/aws-login-vault/internal/keychain"
-	"github.com/hkobayash/aws-login-vault/internal/lock"
+	"github.com/elastic-infra/aws-login-vault/internal/awsconfig"
+	"github.com/elastic-infra/aws-login-vault/internal/keychain"
+	"github.com/elastic-infra/aws-login-vault/internal/lock"
 )
 
 const loginLockTimeout = 30 * time.Second

@@ -13,11 +13,11 @@ import (
 	smithy "github.com/aws/smithy-go"
 	"github.com/spf13/cobra"
 
-	"github.com/hkobayash/aws-login-vault/internal/awsconfig"
-	"github.com/hkobayash/aws-login-vault/internal/keychain"
-	"github.com/hkobayash/aws-login-vault/internal/lock"
-	loginflow "github.com/hkobayash/aws-login-vault/internal/login"
-	"github.com/hkobayash/aws-login-vault/internal/sts"
+	"github.com/elastic-infra/aws-login-vault/internal/awsconfig"
+	"github.com/elastic-infra/aws-login-vault/internal/keychain"
+	"github.com/elastic-infra/aws-login-vault/internal/lock"
+	loginflow "github.com/elastic-infra/aws-login-vault/internal/login"
+	"github.com/elastic-infra/aws-login-vault/internal/sts"
 )
 
 const (

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hkobayash/aws-login-vault/internal/keychain"
+	"github.com/elastic-infra/aws-login-vault/internal/keychain"
 )
 
 func TestSaveSessionWithGuard(t *testing.T) {
