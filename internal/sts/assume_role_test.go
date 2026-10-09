@@ -1,8 +1,12 @@
 package sts
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
+
+	smithy "github.com/aws/smithy-go"
 )
 
 func TestDeriveRoleSessionName(t *testing.T) {
@@ -49,6 +53,29 @@ func TestSanitizeSessionName_Length(t *testing.T) {
 			got := sanitizeSessionName(tt.in)
 			if len(got) != tt.wantLen {
 				t.Errorf("len(sanitizeSessionName(%d-char input)) = %d, want %d", len(tt.in), len(got), tt.wantLen)
+			}
+		})
+	}
+}
+
+func TestIsExpiredToken(t *testing.T) {
+	expired := &smithy.GenericAPIError{Code: "ExpiredToken", Message: "The security token included in the request is expired"}
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"expired token", expired, true},
+		{"wrapped expired token", fmt.Errorf("operation error STS: AssumeRole: %w", expired), true},
+		{"access denied", &smithy.GenericAPIError{Code: "AccessDenied"}, false},
+		{"non api error", errors.New("ExpiredToken"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsExpiredToken(tt.err); got != tt.want {
+				t.Errorf("IsExpiredToken() = %v, want %v", got, tt.want)
 			}
 		})
 	}
