@@ -23,7 +23,7 @@ import (
 const (
 	refreshThreshold   = 60 * time.Second
 	refreshLockTimeout = 30 * time.Second
-	expiredBaseRetries = 2
+	expiredBaseRetries = 1
 
 	envAutoLogin = "AWS_LOGIN_VAULT_AUTO_LOGIN"
 
