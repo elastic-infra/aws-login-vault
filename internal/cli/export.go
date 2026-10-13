@@ -23,6 +23,7 @@ import (
 const (
 	refreshThreshold   = 60 * time.Second
 	refreshLockTimeout = 30 * time.Second
+	expiredBaseRetries = 1
 
 	envAutoLogin = "AWS_LOGIN_VAULT_AUTO_LOGIN"
 
@@ -106,14 +107,45 @@ func runExport(ctx context.Context, sf *storeFlags, opts exportOptions) error {
 // login session, or the assumed-role session when --role is set. Shared by
 // export and the server command.
 func resolveCredentials(ctx context.Context, store *keychain.Store, opts exportOptions) (exportable, error) {
-	base, err := prepareBaseSession(ctx, store, opts.profile, opts.autoLogin)
+	for attempt := 0; ; attempt++ {
+		base, err := prepareBaseSession(ctx, store, opts.profile, opts.autoLogin)
+		if err != nil {
+			return nil, err
+		}
+		if opts.roleARN == "" {
+			return base, nil
+		}
+		assumed, err := prepareAssumedSession(ctx, store, base, opts)
+		if err == nil {
+			return assumed, nil
+		}
+		if !sts.IsExpiredToken(err) || attempt == expiredBaseRetries {
+			return nil, err
+		}
+		if err := invalidateBaseSession(ctx, store, opts.profile, base); err != nil {
+			return nil, err
+		}
+	}
+}
+
+// invalidateBaseSession marks the stored login session expired so the next
+// prepareBaseSession refreshes it, unless another process already replaced it.
+func invalidateBaseSession(ctx context.Context, store *keychain.Store, profile string, stale *keychain.Session) error {
+	pl, err := lock.AcquireProfile(ctx, profile, refreshLockTimeout)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("lock profile %q: %w", profile, err)
 	}
-	if opts.roleARN == "" {
-		return base, nil
+	defer func() { _ = pl.Release() }()
+
+	sess, err := store.Load(profile)
+	if err != nil {
+		return err
 	}
-	return prepareAssumedSession(ctx, store, base, opts)
+	if sess.AccessKeyID != stale.AccessKeyID {
+		return nil
+	}
+	sess.Expiration = time.Time{}
+	return store.Save(profile, sess)
 }
 
 // prepareBaseSession returns a valid (non-expiring-soon) login_session,

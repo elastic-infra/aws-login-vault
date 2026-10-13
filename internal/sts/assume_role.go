@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	awssts "github.com/aws/aws-sdk-go-v2/service/sts"
+	smithy "github.com/aws/smithy-go"
 )
 
 const (
@@ -96,6 +97,12 @@ func AssumeRole(ctx context.Context, in AssumeRoleInput) (*AssumeRoleOutput, err
 		RoleSessionName: sessionName,
 		SourceIdentity:  in.SourceIdentity,
 	}, nil
+}
+
+// IsExpiredToken reports whether STS rejected the signing credentials as expired.
+func IsExpiredToken(err error) bool {
+	apiErr, ok := errors.AsType[smithy.APIError](err)
+	return ok && apiErr.ErrorCode() == "ExpiredToken"
 }
 
 var roleSessionSanitize = regexp.MustCompile(`[^\w+=,.@\-]`)
