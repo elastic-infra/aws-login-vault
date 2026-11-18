@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
 
 	"github.com/elastic-infra/aws-login-vault/internal/awsconfig"
 	"github.com/elastic-infra/aws-login-vault/internal/keychain"
@@ -75,8 +79,36 @@ func performBrowserLogin(ctx context.Context, store *keychain.Store, opts browse
 	}
 
 	sess := sessionFromLoginResult(result)
+	end, err := lookupSessionExpiration(ctx, cfg, sess)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: login session limit unknown, early re-login disabled (%v); grant signin:IntrospectOAuth2Token to enable it\n", err)
+	}
+	applySessionExpiration(sess, end)
 	if err := saveSessionWithGuard(store, opts.profile, opts.prev, sess, opts.force); err != nil {
 		return nil, err
 	}
 	return sess, nil
+}
+
+func lookupSessionExpiration(ctx context.Context, cfg aws.Config, sess *keychain.Session) (time.Time, error) {
+	return loginflow.SessionExpiration(ctx, cfg, aws.Credentials{
+		AccessKeyID:     sess.AccessKeyID,
+		SecretAccessKey: sess.SecretAccessKey,
+		SessionToken:    sess.SessionToken,
+	}, sess.RefreshToken)
+}
+
+// applySessionExpiration records when the login session ends and caps the
+// credential expiration to it. A zero end means unknown and changes nothing.
+func applySessionExpiration(sess *keychain.Session, end time.Time) {
+	sess.SessionExpiration = end
+	if !end.IsZero() && sess.Expiration.After(end) {
+		sess.Expiration = end
+	}
+}
+
+// sessionCapReached reports whether the login session is too close to its end
+// for a refresh to help, so the caller must log in again.
+func sessionCapReached(sess *keychain.Session, now time.Time) bool {
+	return !sess.SessionExpiration.IsZero() && sess.SessionExpiration.Sub(now) <= refreshThreshold
 }

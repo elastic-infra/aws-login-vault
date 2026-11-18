@@ -46,6 +46,12 @@ func runShow(sf *storeFlags, profile string, reveal bool) error {
 	fmt.Printf("clientId:        %s\n", sess.ClientID)
 	fmt.Printf("expiration:      %s (remaining: %s)\n",
 		sess.Expiration.UTC().Format(time.RFC3339), remaining)
+	if sess.SessionExpiration.IsZero() {
+		fmt.Printf("sessionExpiry:   (unknown)\n")
+	} else {
+		fmt.Printf("sessionExpiry:   %s (remaining: %s)\n",
+			sess.SessionExpiration.UTC().Format(time.RFC3339), time.Until(sess.SessionExpiration).Round(time.Second))
+	}
 
 	if reveal {
 		fmt.Printf("accessKeyId:     %s\n", sess.AccessKeyID)

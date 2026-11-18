@@ -149,6 +149,14 @@ func prepareBaseSession(ctx context.Context, store *keychain.Store, profile stri
 }
 
 func refreshBaseSession(ctx context.Context, store *keychain.Store, profile string, prev *keychain.Session, autoLogin bool) (*keychain.Session, error) {
+	if sessionCapReached(prev, time.Now()) {
+		if autoLogin {
+			return runAutoLogin(ctx, store, profile, prev.Region, prev)
+		}
+		return nil, fmt.Errorf("login session ends at %s; run: aws-login-vault login --profile %s (or pass --auto-login)",
+			prev.SessionExpiration.UTC().Format(time.RFC3339), profile)
+	}
+
 	cfg, err := awsconfig.NewAWSConfig(ctx, prev.Region)
 	if err != nil {
 		return nil, fmt.Errorf("build aws config: %w", err)
@@ -162,6 +170,11 @@ func refreshBaseSession(ctx context.Context, store *keychain.Store, profile stri
 	})
 	if err == nil {
 		sess := sessionFromLoginResult(refreshed)
+		end := prev.SessionExpiration
+		if end.IsZero() {
+			end, _ = lookupSessionExpiration(ctx, cfg, sess)
+		}
+		applySessionExpiration(sess, end)
 		if err := store.Save(profile, sess); err != nil {
 			return nil, fmt.Errorf("save refreshed session: %w", err)
 		}
