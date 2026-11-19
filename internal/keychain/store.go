@@ -25,15 +25,16 @@ var ErrNotFound = errors.New("keychain entry not found")
 // It carries the short-lived AWS credentials, the refresh token, and the DPoP
 // private key used to bind the refresh token (must be reused on refresh).
 type Session struct {
-	SessionARN      string    `json:"sessionArn"`
-	AccessKeyID     string    `json:"accessKeyId"`
-	SecretAccessKey string    `json:"secretAccessKey"`
-	SessionToken    string    `json:"sessionToken"`
-	Expiration      time.Time `json:"expiration"`
-	RefreshToken    string    `json:"refreshToken"`
-	DPoPKeyPEM      string    `json:"dpopKeyPem"`
-	Region          string    `json:"region"`
-	ClientID        string    `json:"clientId"`
+	SessionARN        string    `json:"sessionArn"`
+	AccessKeyID       string    `json:"accessKeyId"`
+	SecretAccessKey   string    `json:"secretAccessKey"`
+	SessionToken      string    `json:"sessionToken"`
+	Expiration        time.Time `json:"expiration"`
+	RefreshToken      string    `json:"refreshToken"`
+	DPoPKeyPEM        string    `json:"dpopKeyPem"`
+	Region            string    `json:"region"`
+	ClientID          string    `json:"clientId"`
+	SessionExpiration time.Time `json:"sessionExpiration,omitzero"`
 }
 
 // Creds exposes the subset used for credential_process output.

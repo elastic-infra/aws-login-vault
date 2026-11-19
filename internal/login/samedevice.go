@@ -19,15 +19,25 @@ import (
 const SameDeviceClientID = "arn:aws:signin:::devtools/same-device"
 
 type LoginResult struct {
-	AccessKeyID     string
-	SecretAccessKey string
-	SessionToken    string
-	Expiration      time.Time
-	RefreshToken    string
-	DPoPKeyPEM      string
-	SessionARN      string
-	Region          string
-	ClientID        string
+	AccessKeyID       string
+	SecretAccessKey   string
+	SessionToken      string
+	Expiration        time.Time
+	RefreshToken      string
+	DPoPKeyPEM        string
+	SessionARN        string
+	Region            string
+	ClientID          string
+	SessionExpiration time.Time
+}
+
+// SetSessionExpiration records when the login session ends and caps the
+// credential expiration to it. A zero end means unknown and changes nothing.
+func (r *LoginResult) SetSessionExpiration(end time.Time) {
+	r.SessionExpiration = end
+	if !end.IsZero() && r.Expiration.After(end) {
+		r.Expiration = end
+	}
 }
 
 // SameDeviceLogin drives the full SAME_DEVICE OAuth2 + PKCE + DPoP flow:

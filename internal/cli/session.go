@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"time"
 
 	"github.com/elastic-infra/aws-login-vault/internal/awsconfig"
 	"github.com/elastic-infra/aws-login-vault/internal/keychain"
@@ -17,15 +19,16 @@ var ErrSessionARNMismatch = errors.New("session ARN mismatch")
 
 func sessionFromLoginResult(r *loginflow.LoginResult) *keychain.Session {
 	return &keychain.Session{
-		SessionARN:      r.SessionARN,
-		AccessKeyID:     r.AccessKeyID,
-		SecretAccessKey: r.SecretAccessKey,
-		SessionToken:    r.SessionToken,
-		Expiration:      r.Expiration,
-		RefreshToken:    r.RefreshToken,
-		DPoPKeyPEM:      r.DPoPKeyPEM,
-		Region:          r.Region,
-		ClientID:        r.ClientID,
+		SessionARN:        r.SessionARN,
+		AccessKeyID:       r.AccessKeyID,
+		SecretAccessKey:   r.SecretAccessKey,
+		SessionToken:      r.SessionToken,
+		Expiration:        r.Expiration,
+		RefreshToken:      r.RefreshToken,
+		DPoPKeyPEM:        r.DPoPKeyPEM,
+		Region:            r.Region,
+		ClientID:          r.ClientID,
+		SessionExpiration: r.SessionExpiration,
 	}
 }
 
@@ -74,9 +77,20 @@ func performBrowserLogin(ctx context.Context, store *keychain.Store, opts browse
 		return nil, err
 	}
 
+	end, err := loginflow.LookupSessionExpiration(ctx, cfg, result)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: login session limit unknown, early re-login disabled (introspect refresh token: %v); grant signin:IntrospectOAuth2Token to enable it\n", err)
+	}
+	result.SetSessionExpiration(end)
 	sess := sessionFromLoginResult(result)
 	if err := saveSessionWithGuard(store, opts.profile, opts.prev, sess, opts.force); err != nil {
 		return nil, err
 	}
 	return sess, nil
+}
+
+// sessionCapReached reports whether the login session is too close to its end
+// for a refresh to help, so the caller must log in again.
+func sessionCapReached(sess *keychain.Session, now time.Time) bool {
+	return !sess.SessionExpiration.IsZero() && sess.SessionExpiration.Sub(now) <= refreshThreshold
 }
