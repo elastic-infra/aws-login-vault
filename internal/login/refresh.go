@@ -44,5 +44,6 @@ func Refresh(ctx context.Context, cfg aws.Config, prev *LoginResult) (*LoginResu
 		ClientID:   prev.ClientID,
 	}
 	applyTokenResponse(r, out.TokenOutput)
+	r.SetSessionExpiration(prev.SessionExpiration)
 	return r, nil
 }

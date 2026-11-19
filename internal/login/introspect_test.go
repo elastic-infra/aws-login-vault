@@ -9,27 +9,16 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
-type stubHTTPClient struct {
-	status int
-	body   string
-	req    *http.Request
-}
-
-func (c *stubHTTPClient) Do(r *http.Request) (*http.Response, error) {
-	c.req = r
-	return &http.Response{
-		StatusCode: c.status,
-		Status:     http.StatusText(c.status),
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(c.body)),
-		Request:    r,
-	}, nil
-}
-
-func TestSessionExpiration(t *testing.T) {
-	creds := aws.Credentials{AccessKeyID: "AKIDEXAMPLE", SecretAccessKey: "secret", SessionToken: "token"}
+func TestLookupSessionExpiration(t *testing.T) {
+	r := &LoginResult{
+		AccessKeyID:     "AKIDEXAMPLE",
+		SecretAccessKey: "secret",
+		SessionToken:    "token",
+		RefreshToken:    "refresh-token",
+	}
 
 	tests := []struct {
 		name    string
@@ -55,13 +44,21 @@ func TestSessionExpiration(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			hc := &stubHTTPClient{status: http.StatusOK, body: tt.body}
+			var req *http.Request
 			cfg := aws.Config{
 				Region:      "ap-northeast-1",
-				HTTPClient:  hc,
 				Credentials: aws.AnonymousCredentials{},
+				HTTPClient: smithyhttp.ClientDoFunc(func(rq *http.Request) (*http.Response, error) {
+					req = rq
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     http.Header{"Content-Type": []string{"application/json"}},
+						Body:       io.NopCloser(strings.NewReader(tt.body)),
+						Request:    rq,
+					}, nil
+				}),
 			}
-			got, err := SessionExpiration(context.Background(), cfg, creds, "refresh-token")
+			got, err := LookupSessionExpiration(context.Background(), cfg, r)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("err = %v, want containing %q", err, tt.wantErr)
@@ -74,14 +71,42 @@ func TestSessionExpiration(t *testing.T) {
 			if !got.Equal(tt.want) {
 				t.Errorf("got %v, want %v", got, tt.want)
 			}
-			if hc.req == nil {
+			if req == nil {
 				t.Fatal("no request sent")
 			}
-			if auth := hc.req.Header.Get("Authorization"); !strings.Contains(auth, "Credential=AKIDEXAMPLE/") {
+			if auth := req.Header.Get("Authorization"); !strings.Contains(auth, "Credential=AKIDEXAMPLE/") {
 				t.Errorf("request not signed with the given credentials: %q", auth)
 			}
-			if tok := hc.req.Header.Get("X-Amz-Security-Token"); tok != "token" {
+			if tok := req.Header.Get("X-Amz-Security-Token"); tok != "token" {
 				t.Errorf("X-Amz-Security-Token = %q, want %q", tok, "token")
+			}
+		})
+	}
+}
+
+func TestSetSessionExpiration(t *testing.T) {
+	base := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+	credsExp := base.Add(15 * time.Minute)
+
+	tests := []struct {
+		name    string
+		end     time.Time
+		wantExp time.Time
+	}{
+		{"unknown end keeps expiration", time.Time{}, credsExp},
+		{"end after credentials", base.Add(time.Hour), credsExp},
+		{"end before credentials caps them", base.Add(5 * time.Minute), base.Add(5 * time.Minute)},
+		{"end equal to credentials", credsExp, credsExp},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &LoginResult{Expiration: credsExp}
+			r.SetSessionExpiration(tt.end)
+			if !r.Expiration.Equal(tt.wantExp) {
+				t.Errorf("Expiration = %v, want %v", r.Expiration, tt.wantExp)
+			}
+			if !r.SessionExpiration.Equal(tt.end) {
+				t.Errorf("SessionExpiration = %v, want %v", r.SessionExpiration, tt.end)
 			}
 		})
 	}

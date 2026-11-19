@@ -3,7 +3,6 @@ package login
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -11,26 +10,27 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/signin"
 )
 
-// SessionExpiration returns when the login session behind refreshToken ends,
-// i.e. the refresh token's `exp`. Refreshing does not extend it.
-// creds sign the request explicitly so the default chain (which may resolve
-// back to this tool via credential_process) is never consulted.
-func SessionExpiration(ctx context.Context, cfg aws.Config, creds aws.Credentials, refreshToken string) (time.Time, error) {
+// LookupSessionExpiration returns when the login session behind r ends, i.e.
+// its refresh token's `exp`. Refreshing does not extend it.
+// r's credentials sign the request explicitly so the default chain (which may
+// resolve back to this tool via credential_process) is never consulted.
+func LookupSessionExpiration(ctx context.Context, cfg aws.Config, r *LoginResult) (time.Time, error) {
 	client := signin.NewFromConfig(cfg, func(o *signin.Options) {
-		o.Credentials = credentials.StaticCredentialsProvider{Value: creds}
+		o.Credentials = credentials.NewStaticCredentialsProvider(r.AccessKeyID, r.SecretAccessKey, r.SessionToken)
+		o.RetryMaxAttempts = 1
 	})
 	out, err := client.IntrospectOAuth2TokenWithIAM(ctx, &signin.IntrospectOAuth2TokenWithIAMInput{
-		Token:         aws.String(refreshToken),
+		Token:         aws.String(r.RefreshToken),
 		TokenTypeHint: aws.String("refresh_token"),
 	})
 	if err != nil {
-		return time.Time{}, fmt.Errorf("introspect refresh token: %w", err)
+		return time.Time{}, err
 	}
 	if !aws.ToBool(out.Active) {
-		return time.Time{}, errors.New("introspect refresh token: token is not active")
+		return time.Time{}, errors.New("refresh token is not active")
 	}
 	if out.Exp == nil {
-		return time.Time{}, errors.New("introspect refresh token: response missing exp")
+		return time.Time{}, errors.New("response missing exp")
 	}
 	return time.Unix(*out.Exp, 0), nil
 }

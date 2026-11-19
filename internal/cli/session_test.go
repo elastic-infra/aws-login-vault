@@ -93,34 +93,6 @@ func TestSaveSessionWithGuard(t *testing.T) {
 	}
 }
 
-func TestApplySessionExpiration(t *testing.T) {
-	base := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
-	credsExp := base.Add(15 * time.Minute)
-
-	tests := []struct {
-		name    string
-		end     time.Time
-		wantExp time.Time
-	}{
-		{"unknown end keeps expiration", time.Time{}, credsExp},
-		{"end after credentials", base.Add(time.Hour), credsExp},
-		{"end before credentials caps them", base.Add(5 * time.Minute), base.Add(5 * time.Minute)},
-		{"end equal to credentials", credsExp, credsExp},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			sess := &keychain.Session{Expiration: credsExp}
-			applySessionExpiration(sess, tt.end)
-			if !sess.Expiration.Equal(tt.wantExp) {
-				t.Errorf("Expiration = %v, want %v", sess.Expiration, tt.wantExp)
-			}
-			if !sess.SessionExpiration.Equal(tt.end) {
-				t.Errorf("SessionExpiration = %v, want %v", sess.SessionExpiration, tt.end)
-			}
-		})
-	}
-}
-
 func TestSessionCapReached(t *testing.T) {
 	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 

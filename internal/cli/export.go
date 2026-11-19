@@ -150,11 +150,8 @@ func prepareBaseSession(ctx context.Context, store *keychain.Store, profile stri
 
 func refreshBaseSession(ctx context.Context, store *keychain.Store, profile string, prev *keychain.Session, autoLogin bool) (*keychain.Session, error) {
 	if sessionCapReached(prev, time.Now()) {
-		if autoLogin {
-			return runAutoLogin(ctx, store, profile, prev.Region, prev)
-		}
-		return nil, fmt.Errorf("login session ends at %s; run: aws-login-vault login --profile %s (or pass --auto-login)",
-			prev.SessionExpiration.UTC().Format(time.RFC3339), profile)
+		return reloginOrHint(ctx, store, profile, prev, autoLogin,
+			fmt.Errorf("login session ends at %s", prev.SessionExpiration.UTC().Format(time.RFC3339)))
 	}
 
 	cfg, err := awsconfig.NewAWSConfig(ctx, prev.Region)
@@ -162,32 +159,36 @@ func refreshBaseSession(ctx context.Context, store *keychain.Store, profile stri
 		return nil, fmt.Errorf("build aws config: %w", err)
 	}
 	refreshed, err := loginflow.Refresh(ctx, cfg, &loginflow.LoginResult{
-		RefreshToken: prev.RefreshToken,
-		DPoPKeyPEM:   prev.DPoPKeyPEM,
-		SessionARN:   prev.SessionARN,
-		Region:       prev.Region,
-		ClientID:     prev.ClientID,
+		RefreshToken:      prev.RefreshToken,
+		DPoPKeyPEM:        prev.DPoPKeyPEM,
+		SessionARN:        prev.SessionARN,
+		Region:            prev.Region,
+		ClientID:          prev.ClientID,
+		SessionExpiration: prev.SessionExpiration,
 	})
 	if err == nil {
-		sess := sessionFromLoginResult(refreshed)
-		end := prev.SessionExpiration
-		if end.IsZero() {
-			end, _ = lookupSessionExpiration(ctx, cfg, sess)
+		if refreshed.SessionExpiration.IsZero() {
+			end, _ := loginflow.LookupSessionExpiration(ctx, cfg, refreshed)
+			refreshed.SetSessionExpiration(end)
 		}
-		applySessionExpiration(sess, end)
+		sess := sessionFromLoginResult(refreshed)
 		if err := store.Save(profile, sess); err != nil {
 			return nil, fmt.Errorf("save refreshed session: %w", err)
 		}
 		return sess, nil
 	}
 
-	if loginflow.IsReloginRequired(err) && autoLogin {
-		return runAutoLogin(ctx, store, profile, prev.Region, prev)
-	}
 	if loginflow.IsReloginRequired(err) {
-		return nil, fmt.Errorf("refresh failed (%w); run: aws-login-vault login --profile %s (or pass --auto-login)", err, profile)
+		return reloginOrHint(ctx, store, profile, prev, autoLogin, fmt.Errorf("refresh failed (%w)", err))
 	}
 	return nil, fmt.Errorf("refresh failed: %w", err)
+}
+
+func reloginOrHint(ctx context.Context, store *keychain.Store, profile string, prev *keychain.Session, autoLogin bool, cause error) (*keychain.Session, error) {
+	if autoLogin {
+		return runAutoLogin(ctx, store, profile, prev.Region, prev)
+	}
+	return nil, fmt.Errorf("%w; run: aws-login-vault login --profile %s (or pass --auto-login)", cause, profile)
 }
 
 // bootstrapBaseSession is called when no session exists yet for the profile.
