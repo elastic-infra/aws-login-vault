@@ -118,7 +118,7 @@ func TestSessionEnded(t *testing.T) {
 	}
 }
 
-func TestServableUntilSessionEnd(t *testing.T) {
+func TestNeedsRefresh(t *testing.T) {
 	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 
 	tests := []struct {
@@ -127,18 +127,19 @@ func TestServableUntilSessionEnd(t *testing.T) {
 		exp  time.Time
 		want bool
 	}{
-		{"unknown end", time.Time{}, now.Add(30 * time.Second), false},
-		{"outside threshold", now.Add(refreshThreshold + time.Second), now.Add(refreshThreshold + time.Second), false},
-		{"at threshold, credentials capped", now.Add(refreshThreshold), now.Add(refreshThreshold), true},
-		{"within threshold, credentials capped", now.Add(30 * time.Second), now.Add(30 * time.Second), true},
-		{"within threshold, credentials expired", now.Add(30 * time.Second), now.Add(-time.Second), false},
-		{"past end", now.Add(-time.Second), now.Add(-time.Second), false},
+		{"fresh, unknown end", time.Time{}, now.Add(10 * time.Minute), false},
+		{"expiring, unknown end", time.Time{}, now.Add(30 * time.Second), true},
+		{"expiring, end far away", now.Add(time.Hour), now.Add(30 * time.Second), true},
+		{"capped to end within threshold", now.Add(30 * time.Second), now.Add(30 * time.Second), false},
+		{"capped to end at threshold", now.Add(refreshThreshold), now.Add(refreshThreshold), false},
+		{"near end, credentials expired", now.Add(30 * time.Second), now.Add(-time.Second), true},
+		{"past end", now.Add(-time.Second), now.Add(-time.Second), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sess := &keychain.Session{SessionExpiration: tt.end, Expiration: tt.exp}
-			if got := servableUntilSessionEnd(sess, now); got != tt.want {
-				t.Errorf("servableUntilSessionEnd() = %v, want %v", got, tt.want)
+			if got := needsRefresh(sess, now); got != tt.want {
+				t.Errorf("needsRefresh() = %v, want %v", got, tt.want)
 			}
 		})
 	}
