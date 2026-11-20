@@ -93,7 +93,7 @@ func TestSaveSessionWithGuard(t *testing.T) {
 	}
 }
 
-func TestSessionCapReached(t *testing.T) {
+func TestSessionEnded(t *testing.T) {
 	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 
 	tests := []struct {
@@ -103,16 +103,42 @@ func TestSessionCapReached(t *testing.T) {
 	}{
 		{"unknown", time.Time{}, false},
 		{"well before end", now.Add(time.Hour), false},
-		{"just outside threshold", now.Add(refreshThreshold + time.Second), false},
-		{"at threshold", now.Add(refreshThreshold), true},
-		{"within threshold", now.Add(refreshThreshold - time.Second), true},
+		{"within refresh threshold", now.Add(refreshThreshold - time.Second), false},
+		{"one second before end", now.Add(time.Second), false},
+		{"at end", now, true},
 		{"past end", now.Add(-time.Minute), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sess := &keychain.Session{SessionExpiration: tt.end}
-			if got := sessionCapReached(sess, now); got != tt.want {
-				t.Errorf("sessionCapReached() = %v, want %v", got, tt.want)
+			if got := sessionEnded(sess, now); got != tt.want {
+				t.Errorf("sessionEnded() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestServableUntilSessionEnd(t *testing.T) {
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name string
+		end  time.Time
+		exp  time.Time
+		want bool
+	}{
+		{"unknown end", time.Time{}, now.Add(30 * time.Second), false},
+		{"outside threshold", now.Add(refreshThreshold + time.Second), now.Add(refreshThreshold + time.Second), false},
+		{"at threshold, credentials capped", now.Add(refreshThreshold), now.Add(refreshThreshold), true},
+		{"within threshold, credentials capped", now.Add(30 * time.Second), now.Add(30 * time.Second), true},
+		{"within threshold, credentials expired", now.Add(30 * time.Second), now.Add(-time.Second), false},
+		{"past end", now.Add(-time.Second), now.Add(-time.Second), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sess := &keychain.Session{SessionExpiration: tt.end, Expiration: tt.exp}
+			if got := servableUntilSessionEnd(sess, now); got != tt.want {
+				t.Errorf("servableUntilSessionEnd() = %v, want %v", got, tt.want)
 			}
 		})
 	}

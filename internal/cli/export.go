@@ -149,9 +149,13 @@ func prepareBaseSession(ctx context.Context, store *keychain.Store, profile stri
 }
 
 func refreshBaseSession(ctx context.Context, store *keychain.Store, profile string, prev *keychain.Session, autoLogin bool) (*keychain.Session, error) {
-	if sessionCapReached(prev, time.Now()) {
+	now := time.Now()
+	if sessionEnded(prev, now) {
 		return reloginOrHint(ctx, store, profile, prev, autoLogin,
-			fmt.Errorf("login session ends at %s", prev.SessionExpiration.UTC().Format(time.RFC3339)))
+			fmt.Errorf("login session ended at %s", prev.SessionExpiration.UTC().Format(time.RFC3339)))
+	}
+	if servableUntilSessionEnd(prev, now) {
+		return prev, nil
 	}
 
 	cfg, err := awsconfig.NewAWSConfig(ctx, prev.Region)

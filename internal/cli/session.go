@@ -89,8 +89,16 @@ func performBrowserLogin(ctx context.Context, store *keychain.Store, opts browse
 	return sess, nil
 }
 
-// sessionCapReached reports whether the login session is too close to its end
-// for a refresh to help, so the caller must log in again.
-func sessionCapReached(sess *keychain.Session, now time.Time) bool {
-	return !sess.SessionExpiration.IsZero() && sess.SessionExpiration.Sub(now) <= refreshThreshold
+// sessionEnded reports whether the login session has reached its end, so only
+// a new login can help.
+func sessionEnded(sess *keychain.Session, now time.Time) bool {
+	return !sess.SessionExpiration.IsZero() && !now.Before(sess.SessionExpiration)
+}
+
+// servableUntilSessionEnd reports whether sess is within refreshThreshold of the
+// session end but its credentials, already capped to that end, are still valid.
+func servableUntilSessionEnd(sess *keychain.Session, now time.Time) bool {
+	return !sess.SessionExpiration.IsZero() &&
+		sess.SessionExpiration.Sub(now) <= refreshThreshold &&
+		sess.Expiration.After(now)
 }
