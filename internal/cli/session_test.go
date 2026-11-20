@@ -93,7 +93,7 @@ func TestSaveSessionWithGuard(t *testing.T) {
 	}
 }
 
-func TestSessionCapReached(t *testing.T) {
+func TestSessionEnded(t *testing.T) {
 	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
 
 	tests := []struct {
@@ -103,16 +103,43 @@ func TestSessionCapReached(t *testing.T) {
 	}{
 		{"unknown", time.Time{}, false},
 		{"well before end", now.Add(time.Hour), false},
-		{"just outside threshold", now.Add(refreshThreshold + time.Second), false},
-		{"at threshold", now.Add(refreshThreshold), true},
-		{"within threshold", now.Add(refreshThreshold - time.Second), true},
+		{"within refresh threshold", now.Add(refreshThreshold - time.Second), false},
+		{"one second before end", now.Add(time.Second), false},
+		{"at end", now, true},
 		{"past end", now.Add(-time.Minute), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sess := &keychain.Session{SessionExpiration: tt.end}
-			if got := sessionCapReached(sess, now); got != tt.want {
-				t.Errorf("sessionCapReached() = %v, want %v", got, tt.want)
+			if got := sessionEnded(sess, now); got != tt.want {
+				t.Errorf("sessionEnded() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNeedsRefresh(t *testing.T) {
+	now := time.Date(2026, 11, 18, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name string
+		end  time.Time
+		exp  time.Time
+		want bool
+	}{
+		{"fresh, unknown end", time.Time{}, now.Add(10 * time.Minute), false},
+		{"expiring, unknown end", time.Time{}, now.Add(30 * time.Second), true},
+		{"expiring, end far away", now.Add(time.Hour), now.Add(30 * time.Second), true},
+		{"capped to end within threshold", now.Add(30 * time.Second), now.Add(30 * time.Second), false},
+		{"capped to end at threshold", now.Add(refreshThreshold), now.Add(refreshThreshold), false},
+		{"near end, credentials expired", now.Add(30 * time.Second), now.Add(-time.Second), true},
+		{"past end", now.Add(-time.Second), now.Add(-time.Second), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sess := &keychain.Session{SessionExpiration: tt.end, Expiration: tt.exp}
+			if got := needsRefresh(sess, now); got != tt.want {
+				t.Errorf("needsRefresh() = %v, want %v", got, tt.want)
 			}
 		})
 	}

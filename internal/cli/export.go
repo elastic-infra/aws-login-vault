@@ -127,7 +127,7 @@ func prepareBaseSession(ctx context.Context, store *keychain.Store, profile stri
 		return nil, err
 	}
 
-	if time.Until(sess.Expiration) > refreshThreshold {
+	if !needsRefresh(sess, time.Now()) {
 		return sess, nil
 	}
 
@@ -141,7 +141,7 @@ func prepareBaseSession(ctx context.Context, store *keychain.Store, profile stri
 	if err != nil {
 		return nil, err
 	}
-	if time.Until(sess.Expiration) > refreshThreshold {
+	if !needsRefresh(sess, time.Now()) {
 		return sess, nil
 	}
 
@@ -149,9 +149,9 @@ func prepareBaseSession(ctx context.Context, store *keychain.Store, profile stri
 }
 
 func refreshBaseSession(ctx context.Context, store *keychain.Store, profile string, prev *keychain.Session, autoLogin bool) (*keychain.Session, error) {
-	if sessionCapReached(prev, time.Now()) {
+	if sessionEnded(prev, time.Now()) {
 		return reloginOrHint(ctx, store, profile, prev, autoLogin,
-			fmt.Errorf("login session ends at %s", prev.SessionExpiration.UTC().Format(time.RFC3339)))
+			fmt.Errorf("login session ended at %s", prev.SessionExpiration.UTC().Format(time.RFC3339)))
 	}
 
 	cfg, err := awsconfig.NewAWSConfig(ctx, prev.Region)
@@ -210,7 +210,7 @@ func bootstrapBaseSession(ctx context.Context, store *keychain.Store, profile st
 		return nil, err
 	}
 	if sess != nil {
-		if time.Until(sess.Expiration) > refreshThreshold {
+		if !needsRefresh(sess, time.Now()) {
 			return sess, nil
 		}
 		prev = sess
